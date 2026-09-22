@@ -143,7 +143,7 @@ function CheckoutContent() {
     paystack.newTransaction({
       key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY,
       email: user.email || '',
-      amount: selectedTier.price * 100, // Paystack expects Kobo
+      amount: Math.round(selectedTier.price * 100), // Paystack expects Kobo (as integer)
       currency: 'NGN',
       metadata: {
         custom_fields: [
