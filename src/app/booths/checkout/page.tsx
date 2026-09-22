@@ -19,11 +19,30 @@ type Step = 'auth' | 'profile' | 'business_details' | 'confirm' | 'complete';
 function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tierId = searchParams.get('tier');
+
+  const [tierId, setTierId] = useState<string | null>(null);
+  const [checkingTier, setCheckingTier] = useState(true);
   
   const { user, loading: authLoading, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
   const { tiers, loading: tiersLoading } = useTiers();
   const { orders: existingOrders } = useVendorOrders(user?.uid || undefined);
+
+  useEffect(() => {
+    const nextTier = searchParams.get('tier');
+    if (nextTier) {
+      setTierId(nextTier);
+      setCheckingTier(false);
+    } else if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const winTier = urlParams.get('tier');
+      if (winTier) {
+        setTierId(winTier);
+        setCheckingTier(false);
+      } else {
+        router.push('/booths');
+      }
+    }
+  }, [searchParams, router]);
 
   useEffect(() => {
     if (user && existingOrders && existingOrders.length > 0 && formData.orgName === '') {
@@ -62,12 +81,6 @@ function CheckoutContent() {
   const [signupOrgName, setSignupOrgName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
-  useEffect(() => {
-    if (!tierId) {
-      router.push('/booths');
-    }
-  }, [tierId, router]);
 
   useEffect(() => {
     if (user && step === 'auth') {
@@ -184,7 +197,7 @@ function CheckoutContent() {
     });
   };
 
-  if (authLoading || tiersLoading) {
+  if (authLoading || tiersLoading || checkingTier) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA]">
         <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
