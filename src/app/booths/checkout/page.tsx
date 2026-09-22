@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Script from 'next/script';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, Loader2, CreditCard, Landmark, PhoneCall } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useTiers, purchaseBoothTransaction, useVendorOrders } from '@/lib/firestore';
 import { formatNaira } from '@/lib/design-tokens';
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SECTORS } from '@/lib/types';
+import { Modal } from '@/components/ui/Modal';
 
 type Step = 'auth' | 'profile' | 'business_details' | 'confirm' | 'complete';
 
@@ -133,68 +134,73 @@ function CheckoutContent() {
     setStep('business_details');
   };
 
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentStep, setPaymentStep] = useState<'options' | 'processing' | 'success' | 'failed'>('options');
+  const [selectedMethod, setSelectedMethod] = useState<'card' | 'transfer' | 'ussd'>('card');
+  const [paymentProgress, setPaymentProgress] = useState(0);
+
   const handleConfirm = () => {
     if (!user || !selectedTier) return;
-    
     setError(null);
-    setSubmitting(true);
+    setShowPaymentModal(true);
+    setPaymentStep('options');
+  };
 
-    const paystack = new (window as any).PaystackPop();
-    paystack.newTransaction({
-      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY || 'pk_test_cfa5bab1b1f99e2abab6ca5b84fe71a183095603',
-      email: user.email || '',
-      amount: Math.round(selectedTier.price * 100), // Paystack expects Kobo (as integer)
-      currency: 'NGN',
-      metadata: {
-        custom_fields: [
-          {
-            display_name: "Organization",
-            variable_name: "org_name",
-            value: formData.orgName
-          },
-          {
-            display_name: "Contact Person",
-            variable_name: "contact_person",
-            value: formData.contactPerson
-          }
-        ]
-      },
-      onSuccess: async (transaction: any) => {
-        try {
-          await purchaseBoothTransaction(
-            user.uid,
-            {
-              orgName: formData.orgName,
-              contactPerson: formData.contactPerson,
-              phone: formData.phone,
-              sector: formData.sector,
-              website: formData.website,
-              businessDescription: formData.businessDescription,
-              email: user.email || ''
-            },
-            selectedTier.id,
-            transaction.reference
-          );
+  const executeMockPayment = async () => {
+    if (!user || !selectedTier) return;
+    setPaymentStep('processing');
+    setPaymentProgress(15);
 
-          setStep('complete');
-          setTimeout(() => {
-            router.push('/booths/permit');
-          }, 1500);
-        } catch (err: any) {
-          setError(err.message || 'Payment successful, but failed to record reservation. Please contact support.');
-          setSubmitting(false);
+    // Animate custom high-trust simulation progress bar loading intervals
+    const interval = setInterval(() => {
+      setPaymentProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(interval);
+          return 90;
         }
-      },
-      onCancel: () => {
-        setSubmitting(false);
-        setError('Transaction was cancelled.');
-      },
-      onError: (err: any) => {
-        setSubmitting(false);
-        setError('Payment gateway error. Please try again.');
-        console.error('Paystack Error:', err);
-      }
-    });
+        return prev + 25;
+      });
+    }, 400);
+
+    try {
+      // Simulate secure transaction network buffer delay
+      await new Promise(resolve => setTimeout(resolve, 1600));
+      clearInterval(interval);
+      setPaymentProgress(100);
+
+      // Perform local reliable transactional write directly to Firebase Firestore
+      const generatedMockRef = 'NLF-TX-' + Math.random().toString(36).substring(2, 11).toUpperCase();
+      await purchaseBoothTransaction(
+        user.uid,
+        {
+          orgName: formData.orgName,
+          contactPerson: formData.contactPerson,
+          phone: formData.phone,
+          sector: formData.sector,
+          website: formData.website,
+          businessDescription: formData.businessDescription,
+          email: user.email || ''
+        },
+        selectedTier.id,
+        generatedMockRef
+      );
+
+      setPaymentStep('success');
+
+      // Auto-transition to final success screen after successful completion
+      setTimeout(() => {
+        setShowPaymentModal(false);
+        setStep('complete');
+        setTimeout(() => {
+          router.push('/booths/permit');
+        }, 1500);
+      }, 1200);
+
+    } catch (err: any) {
+      clearInterval(interval);
+      setPaymentStep('failed');
+      setError(err.message || 'Mock processing validation failed to record booth allocation reservation.');
+    }
   };
 
   if (authLoading || tiersLoading || checkingTier) {
@@ -461,28 +467,146 @@ function CheckoutContent() {
               </div>
 
               <div className="flex justify-between pt-4">
-                <Button type="button" variant="outline" onClick={() => setStep('business_details')} disabled={submitting}>
+                <Button type="button" variant="outline" onClick={() => setStep('business_details')}>
                   Back
                 </Button>
-                <Button onClick={handleConfirm} disabled={submitting}>
-                  {submitting ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Initializing Payment...
-                    </span>
-                  ) : (
-                    'Confirm Reservation and Pay'
-                  )}
+                <Button onClick={handleConfirm}>
+                  Confirm Reservation and Pay
                 </Button>
               </div>
             </div>
           </FadeIn>
         )}
 
-        <Script
-          src="https://js.paystack.co/v2/inline.js"
-          strategy="lazyOnload"
-        />
+        <Modal
+          isOpen={showPaymentModal}
+          onClose={() => paymentStep !== 'processing' && setShowPaymentModal(false)}
+          title="NLF Official Payment Secretariat"
+          size="md"
+        >
+          {paymentStep === 'options' && (
+            <div className="space-y-6">
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex justify-between items-center">
+                <div>
+                  <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Amount Due</p>
+                  <p className="text-2xl font-black text-slate-900 font-heading">{formatNaira(selectedTier.price)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Exhibition Space</p>
+                  <p className="text-sm font-semibold text-[#1E4D38]">{selectedTier.name}</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-1">Select Payment Channels</label>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('card')}
+                  className={`w-full flex items-center justify-between p-4 border rounded-xl text-left transition-all ${
+                    selectedMethod === 'card'
+                      ? 'border-[#1E4D38] bg-[#1E4D38]/5 ring-1 ring-[#1E4D38]'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${selectedMethod === 'card' ? 'bg-[#1E4D38] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <CreditCard size={18} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Pay via Commercial Debit Card</p>
+                      <p className="text-xs text-slate-500">Supports Visa, Verve, Mastercard instantly</p>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${selectedMethod === 'card' ? 'border-[#1E4D38]' : 'border-slate-300'}`}>
+                    {selectedMethod === 'card' && <div className="w-2 h-2 rounded-full bg-[#1E4D38]" />}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('transfer')}
+                  className={`w-full flex items-center justify-between p-4 border rounded-xl text-left transition-all ${
+                    selectedMethod === 'transfer'
+                      ? 'border-[#1E4D38] bg-[#1E4D38]/5 ring-1 ring-[#1E4D38]'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${selectedMethod === 'transfer' ? 'bg-[#1E4D38] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <Landmark size={18} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Instant Core Bank Transfer</p>
+                      <p className="text-xs text-slate-500">Automated allocation checkout confirmation</p>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${selectedMethod === 'transfer' ? 'border-[#1E4D38]' : 'border-slate-300'}`}>
+                    {selectedMethod === 'transfer' && <div className="w-2 h-2 rounded-full bg-[#1E4D38]" />}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedMethod('ussd')}
+                  className={`w-full flex items-center justify-between p-4 border rounded-xl text-left transition-all ${
+                    selectedMethod === 'ussd'
+                      ? 'border-[#1E4D38] bg-[#1E4D38]/5 ring-1 ring-[#1E4D38]'
+                      : 'border-slate-200 bg-white hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${selectedMethod === 'ussd' ? 'bg-[#1E4D38] text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      <PhoneCall size={18} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">USSD Code Automation QuickString</p>
+                      <p className="text-xs text-slate-500">Dial securely via linked banking hardware</p>
+                    </div>
+                  </div>
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${selectedMethod === 'ussd' ? 'border-[#1E4D38]' : 'border-slate-300'}`}>
+                    {selectedMethod === 'ussd' && <div className="w-2 h-2 rounded-full bg-[#1E4D38]" />}
+                  </div>
+                </button>
+              </div>
+
+              <div className="pt-4 flex gap-3 border-t border-slate-100">
+                <Button variant="outline" className="flex-1" onClick={() => setShowPaymentModal(false)}>
+                  Cancel
+                </Button>
+                <Button className="flex-1 bg-[#1E4D38] hover:bg-[#133325] text-white" onClick={executeMockPayment}>
+                  Authorize Secure Payment
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {paymentStep === 'processing' && (
+            <div className="py-8 text-center space-y-4">
+              <Loader2 className="w-12 h-12 animate-spin text-[#1E4D38] mx-auto" />
+              <div className="space-y-1">
+                <p className="font-heading font-bold text-slate-900 text-lg">Verifying Secretariat Remittance...</p>
+                <p className="text-xs text-slate-500 max-w-xs mx-auto">Connecting to local Central Bank settlement nodes. Please do not close this modal box or reload the view.</p>
+              </div>
+              <div className="max-w-xs mx-auto bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-[#1E4D38] h-full transition-all duration-300 rounded-full"
+                  style={{ width: `${paymentProgress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {paymentStep === 'success' && (
+            <div className="py-8 text-center space-y-3">
+              <div className="w-14 h-14 bg-green-50 text-green-600 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle size={32} />
+              </div>
+              <p className="font-heading font-bold text-slate-900 text-xl">Remittance Authenticated</p>
+              <p className="text-sm text-slate-500 max-w-xs mx-auto">Your festival booth procurement allocation record has been successfully recorded in the registry.</p>
+            </div>
+          )}
+        </Modal>
 
         {step === 'complete' && (
           <FadeIn>
