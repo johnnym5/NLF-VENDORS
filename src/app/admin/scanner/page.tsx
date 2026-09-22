@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
   QrCode,
   Search,
@@ -27,50 +27,46 @@ export default function ScannerPage() {
   const [scannedVendor, setScannedVendor] = useState<any>(null);
   const [status, setStatus] = useState<'idle' | 'scanning' | 'found' | 'not_found'>('idle');
   const [scanMethod, setScanMethod] = useState<'camera' | 'manual'>('camera');
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    if (scanMethod === 'camera' && typeof window !== 'undefined') {
-      // Delay initialization slightly to ensure the HTML element is mounted
-      const timer = setTimeout(() => {
+    if (scanMethod === 'camera' && status === 'idle' && typeof window !== 'undefined') {
+      const startScanner = async () => {
         try {
-          const scanner = new Html5QrcodeScanner(
-            "reader",
-            { fps: 10, qrbox: { width: 250, height: 250 } },
-            /* verbose= */ false
-          );
+          if (!html5QrCodeRef.current) {
+            html5QrCodeRef.current = new Html5Qrcode("reader");
+          }
 
-          scannerRef.current = scanner;
+          const qrConfig = { fps: 10, qrbox: { width: 250, height: 250 } };
 
-          scanner.render(
+          await html5QrCodeRef.current.start(
+            { facingMode: "environment" }, // Prioritize back camera
+            qrConfig,
             (decodedText) => {
-              // Handle successful scan
-              // Expected QR text structure: "ORDER:BTH-1234|ORG:Tester..." or just plain order reference
               let parsedId = decodedText;
               if (decodedText.startsWith('ORDER:')) {
                 const parts = decodedText.split('|');
                 parsedId = parts[0].replace('ORDER:', '').trim();
               }
-
               processVerification(parsedId);
             },
-            (error) => {
-              // Ignore constant camera reading frame errors silently
-            }
+            () => {} // Ignore scan errors
           );
         } catch (err) {
-          console.error("Failed to initialize html5-qrcode scanner:", err);
+          console.error("Failed to initialize camera scanner:", err);
         }
-      }, 300);
+      };
+
+      const timer = setTimeout(startScanner, 300);
 
       return () => {
         clearTimeout(timer);
-        if (scannerRef.current) {
-          scannerRef.current.clear().catch(err => console.error("Failed to clear scanner:", err));
+        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+          html5QrCodeRef.current.stop().catch(err => console.error("Failed to stop scanner:", err));
         }
       };
     }
-  }, [scanMethod, orders]);
+  }, [scanMethod, status, orders]);
 
   const processVerification = (queryText: string) => {
     setStatus('scanning');
@@ -87,8 +83,8 @@ export default function ScannerPage() {
         setScannedVendor(vendor);
         setStatus('found');
         // Stop scanning if camera is active to lock the view
-        if (scannerRef.current) {
-          scannerRef.current.clear().catch(err => console.error(err));
+        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+          html5QrCodeRef.current.stop().catch(err => console.error(err));
         }
       } else {
         setScannedVendor(null);
@@ -302,20 +298,6 @@ export default function ScannerPage() {
         #reader video {
           object-fit: cover !important;
           border-radius: 12px;
-        }
-        #reader button {
-          background-color: #1E4D38 !important;
-          color: white !important;
-          border: none !important;
-          padding: 8px 16px !important;
-          border-radius: 6px !important;
-          font-size: 14px !important;
-          font-weight: 500 !important;
-          cursor: pointer !important;
-          margin-top: 10px !important;
-        }
-        #reader button:hover {
-          background-color: #153627 !important;
         }
       `}</style>
     </div>
