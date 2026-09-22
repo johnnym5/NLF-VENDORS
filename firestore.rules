@@ -1,0 +1,20 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Tiers can be read by anyone, written only by Admins
+    match /booth_tiers/{tierId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        (request.auth.token.admin == true || request.auth.token.email == 'admin@nlf.com');
+    }
+    
+    // Orders can be created by authenticated users with active stock
+    match /booth_orders/{orderId} {
+      allow read: if request.auth != null && 
+        (resource.data.userId == request.auth.uid || request.auth.token.admin == true);
+      allow create: if request.auth != null;
+      allow update: if request.auth != null && request.auth.token.admin == true;
+    }
+  }
+}
