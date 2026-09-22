@@ -141,7 +141,7 @@ function CheckoutContent() {
 
     const paystack = new (window as any).PaystackPop();
     paystack.newTransaction({
-      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY,
+      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY || 'pk_test_cfa5bab1b1f99e2abab6ca5b84fe71a183095603',
       email: user.email || '',
       amount: Math.round(selectedTier.price * 100), // Paystack expects Kobo (as integer)
       currency: 'NGN',
