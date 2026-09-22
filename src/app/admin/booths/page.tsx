@@ -12,7 +12,9 @@ import {
   updateTierStock, 
   toggleTierLock,
   addBoothTier,
-  updateTierName
+  updateTierName,
+  editBoothTierFull,
+  deleteBoothTier
 } from '@/lib/firestore';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Badge } from '@/components/ui/Badge';
@@ -31,7 +33,9 @@ import {
   ShieldCheck,
   Search,
   Plus,
-  QrCode
+  QrCode,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -106,6 +110,79 @@ export default function AdminDashboardPage() {
   const handleSaveBoothNumber = async (orderDocId: string) => {
     await assignBoothNumber(orderDocId, editingBoothValue);
     setEditingBoothId(null);
+  };
+
+  // Edit / Delete State Configurations
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedEditTier, setSelectedEditTier] = useState<BoothTier | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    dimension: '',
+    price: '',
+    stock: '',
+    initialStock: '',
+    colorCode: 'sage' as 'sage' | 'champagne' | 'slate',
+    perksString: ''
+  });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleOpenEditModal = (tier: BoothTier) => {
+    setSelectedEditTier(tier);
+    setEditForm({
+      name: tier.name,
+      dimension: tier.dimension,
+      price: tier.price.toString(),
+      stock: tier.stock.toString(),
+      initialStock: (tier.initialStock ?? tier.stock).toString(),
+      colorCode: tier.colorCode,
+      perksString: tier.perks?.join('\n') || ''
+    });
+    setEditError(null);
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateTierFull = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEditTier) return;
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const perks = editForm.perksString
+        .split('\n')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+
+      await editBoothTierFull(selectedEditTier.id, {
+        name: editForm.name,
+        dimension: editForm.dimension,
+        price: Number(editForm.price),
+        stock: Number(editForm.stock),
+        initialStock: Number(editForm.initialStock),
+        colorCode: editForm.colorCode,
+        perks
+      });
+      setIsEditModalOpen(false);
+    } catch (err: any) {
+      setEditError(err.message || 'Failed to update booth tier.');
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeleteTierCheck = async (tierId: string) => {
+    const hasActiveOrders = orders?.some(o => o.tierId === tierId);
+    if (hasActiveOrders) {
+      alert("Cannot delete this booth tier. There are existing active or revoked tickets matching this configuration tier. The ticket registry must remain valid.");
+      return;
+    }
+    if (confirm("Are you sure you want to permanently delete this booth tier from the live configuration registry?")) {
+      try {
+        await deleteBoothTier(tierId);
+      } catch (err: any) {
+        alert(err.message || "Failed to remove tier.");
+      }
+    }
   };
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -209,8 +286,27 @@ export default function AdminDashboardPage() {
               return (
                 <FadeIn key={tier.id} delay={index * 150} className={`bg-white rounded-xl border p-6 shadow-sm ${colors.borderColor}`}>
                   <div className="flex justify-between items-start mb-6">
-                    <h3 className="font-heading font-semibold text-lg text-slate-900">{tier.name}</h3>
-                    <Badge variant={tier.colorCode} className={`${colors.badgeBg} ${colors.badgeText}`}>{tier.colorCode}</Badge>
+                    <div>
+                      <h3 className="font-heading font-semibold text-lg text-slate-900">{tier.name}</h3>
+                      <p className="text-xs font-mono text-slate-400 mt-0.5">{tier.dimension}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleOpenEditModal(tier)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors"
+                        title="Edit Details"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteTierCheck(tier.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-slate-50 transition-colors"
+                        title="Delete Tier"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <Badge variant={tier.colorCode} className={`${colors.badgeBg} ${colors.badgeText} ml-1`}>{tier.colorCode}</Badge>
+                    </div>
                   </div>
 
                   <div className="space-y-6">
@@ -526,6 +622,81 @@ export default function AdminDashboardPage() {
             </Button>
             <Button type="submit" disabled={addLoading}>
               {addLoading ? 'Creating...' : 'Create Tier'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Modify Booth Tier Details">
+        <form onSubmit={handleUpdateTierFull} className="space-y-4">
+          {editError && <Alert variant="error">{editError}</Alert>}
+
+          <Input
+            label="Tier Name"
+            value={editForm.name}
+            onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+            required
+          />
+
+          <Input
+            label="Dimension"
+            value={editForm.dimension}
+            onChange={(e) => setEditForm(prev => ({ ...prev, dimension: e.target.value }))}
+            required
+          />
+
+          <div className="grid grid-cols-3 gap-4">
+            <Input
+              label="Price (NGN)"
+              type="number"
+              value={editForm.price}
+              onChange={(e) => setEditForm(prev => ({ ...prev, price: e.target.value }))}
+              required
+            />
+            <Input
+              label="Current Stock"
+              type="number"
+              value={editForm.stock}
+              onChange={(e) => setEditForm(prev => ({ ...prev, stock: e.target.value }))}
+              required
+            />
+            <Input
+              label="Initial Quota"
+              type="number"
+              value={editForm.initialStock}
+              onChange={(e) => setEditForm(prev => ({ ...prev, initialStock: e.target.value }))}
+              required
+            />
+          </div>
+
+          <Select
+            label="Theme Color Palette"
+            value={editForm.colorCode}
+            onChange={(val) => setEditForm(prev => ({ ...prev, colorCode: val as any }))}
+            options={[
+              { value: 'sage', label: 'Sage Green (Standard / Agro)' },
+              { value: 'champagne', label: 'Champagne Gold (Premium / Culinary)' },
+              { value: 'slate', label: 'Slate Gray (Corporate / Machinery)' },
+            ]}
+          />
+
+          <div>
+            <label className="text-sm font-medium text-slate-700 mb-1.5 block">
+              Inclusions & Perks (One per line)
+            </label>
+            <textarea
+              className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-300 focus:outline-none focus:ring-2 focus:border-[#B8D8C5] focus:ring-[#B8D8C5]/20 min-h-[100px]"
+              value={editForm.perksString}
+              onChange={(e) => setEditForm(prev => ({ ...prev, perksString: e.target.value }))}
+            />
+          </div>
+
+          <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+            <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={editLoading}>
+              {editLoading ? 'Saving Changes...' : 'Save Configuration'}
             </Button>
           </div>
         </form>

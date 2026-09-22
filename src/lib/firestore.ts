@@ -203,3 +203,18 @@ export async function updateTierName(tierId: string, newName: string) {
   await updateDoc(tierRef, { name: newName });
 }
 
+export async function editBoothTierFull(tierId: string, updatedFields: Partial<Omit<BoothTier, 'id' | 'updatedAt'>>) {
+  const tierRef = doc(db, 'booth_tiers', tierId);
+  await updateDoc(tierRef, {
+    ...updatedFields,
+    updatedAt: new Date().toISOString()
+  });
+}
+
+import { deleteDoc } from 'firebase/firestore';
+
+export async function deleteBoothTier(tierId: string) {
+  const tierRef = doc(db, 'booth_tiers', tierId);
+  await deleteDoc(tierRef);
+}
+
