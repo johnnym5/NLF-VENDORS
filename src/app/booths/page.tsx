@@ -98,7 +98,16 @@ export default function BoothsPage() {
 
                     <div className="mt-6 pt-6 border-t border-slate-100">
                       <div className="mb-4">
-                        <span className={`text-2xl font-heading font-bold`} style={inlineBorderColor ? { color: inlineBorderColor } : {}}>
+                        <span
+                          className="text-4xl font-heading font-black tracking-tight"
+                          style={
+                            tier.colorCode === 'sage'
+                              ? { color: '#133325' }
+                              : tier.colorCode === 'champagne'
+                              ? { color: '#6A5013' }
+                              : { color: '#111827' }
+                          }
+                        >
                           {formatNaira(tier.price)}
                         </span>
                       </div>

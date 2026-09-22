@@ -8,7 +8,8 @@ import {
   query,
   where,
   runTransaction,
-  updateDoc
+  updateDoc,
+  setDoc
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { BoothTier, BoothOrder } from './types';
@@ -98,14 +99,18 @@ export function useVendorOrders(userId: string | undefined) {
 
 export async function purchaseBoothTransaction(
   userId: string,
-  orgDetails: { orgName: string; contactPerson: string; email: string; phone: string; sector: string },
-  selectedTierId: string
+  orgDetails: { orgName: string; contactPerson: string; email: string; phone: string; sector: string; website?: string; businessDescription?: string },
+  selectedTierId: string,
+  customPaymentRef?: string
 ) {
   const tierRef = doc(db, 'booth_tiers', selectedTierId);
+  const statsRef = doc(db, 'metadata', 'global_stats');
   const newOrderRef = doc(collection(db, 'booth_orders'));
 
   await runTransaction(db, async (transaction) => {
     const tierDoc = await transaction.get(tierRef);
+    const statsDoc = await transaction.get(statsRef);
+
     if (!tierDoc.exists()) {
       throw new Error("Tier does not exist!");
     }
@@ -118,11 +123,19 @@ export async function purchaseBoothTransaction(
       throw new Error("This tier is out of stock.");
     }
 
+    // Get current sequence
+    let currentSequence = 0;
+    if (statsDoc.exists()) {
+      currentSequence = statsDoc.data().totalOrders || 0;
+    }
+    const newSequence = currentSequence + 1;
+
     const newStock = tierData.stock - 1;
     transaction.update(tierRef, { stock: newStock });
+    transaction.set(statsRef, { totalOrders: newSequence }, { merge: true });
 
     const orderId = 'BTH-' + Math.floor(1000 + Math.random() * 9000).toString();
-    const paymentReference = 'SIM-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+    const paymentReference = customPaymentRef || 'SIM-' + Math.random().toString(36).substring(2, 10).toUpperCase();
     
     const orderData: Omit<BoothOrder, 'docId'> = {
       id: orderId,
@@ -132,6 +145,7 @@ export async function purchaseBoothTransaction(
       tierName: tierData.name,
       pricePaid: tierData.price,
       assignedBoothNumber: 'Pending Assignment',
+      vendorSequence: newSequence,
       status: 'ACTIVE',
       paymentReference,
       purchasedAt: new Date().toISOString(),
@@ -171,3 +185,21 @@ export async function toggleTierLock(tierId: string, currentLockState: boolean) 
   const tierRef = doc(db, 'booth_tiers', tierId);
   await updateDoc(tierRef, { isLocked: !currentLockState });
 }
+
+export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' | 'isLocked'>) {
+  const newRef = doc(collection(db, 'booth_tiers'));
+  const fullData: BoothTier = {
+    id: newRef.id,
+    ...tierData,
+    isLocked: false,
+    updatedAt: new Date().toISOString(),
+  };
+  await setDoc(newRef, fullData);
+  return newRef.id;
+}
+
+export async function updateTierName(tierId: string, newName: string) {
+  const tierRef = doc(db, 'booth_tiers', tierId);
+  await updateDoc(tierRef, { name: newName });
+}
+

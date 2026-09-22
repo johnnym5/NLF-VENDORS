@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Script from 'next/script';
 import { CheckCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { useTiers, purchaseBoothTransaction } from '@/lib/firestore';
+import { useTiers, purchaseBoothTransaction, useVendorOrders } from '@/lib/firestore';
 import { formatNaira } from '@/lib/design-tokens';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Alert } from '@/components/ui/Alert';
@@ -13,7 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SECTORS } from '@/lib/types';
 
-type Step = 'auth' | 'profile' | 'confirm' | 'complete';
+type Step = 'auth' | 'profile' | 'business_details' | 'confirm' | 'complete';
 
 function CheckoutContent() {
   const router = useRouter();
@@ -22,18 +23,37 @@ function CheckoutContent() {
   
   const { user, loading: authLoading, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
   const { tiers, loading: tiersLoading } = useTiers();
-  
+  const { orders: existingOrders } = useVendorOrders(user?.uid || undefined);
+
+  useEffect(() => {
+    if (user && existingOrders && existingOrders.length > 0 && formData.orgName === '') {
+      const latestOrder = existingOrders[existingOrders.length - 1];
+      setFormData({
+        orgName: latestOrder.orgName || '',
+        contactPerson: latestOrder.contactPerson || '',
+        phone: latestOrder.phone || '',
+        sector: latestOrder.sector || '',
+        website: latestOrder.website || '',
+        businessDescription: latestOrder.businessDescription || ''
+      });
+    }
+  }, [user, existingOrders]);
+
   const [step, setStep] = useState<Step>('auth');
   const [formData, setFormData] = useState<{
     orgName: string;
     contactPerson: string;
     phone: string;
     sector: string;
+    website: string;
+    businessDescription: string;
   }>({
     orgName: '',
     contactPerson: '',
     phone: '',
-    sector: SECTORS[0] || ''
+    sector: '',
+    website: '',
+    businessDescription: ''
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,32 +117,71 @@ function CheckoutContent() {
       return;
     }
     setError(null);
-    setStep('confirm');
+    setStep('business_details');
   };
 
-  const handleConfirm = async () => {
+  const handleConfirm = () => {
     if (!user || !selectedTier) return;
     
-    setSubmitting(true);
     setError(null);
-    
-    try {
-      await purchaseBoothTransaction(user.uid, {
-        orgName: formData.orgName,
-        contactPerson: formData.contactPerson,
-        phone: formData.phone,
-        sector: formData.sector,
-        email: user.email || ''
-      }, selectedTier.id);
-      
-      setStep('complete');
-      setTimeout(() => {
-        router.push('/booths/permit');
-      }, 2000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to process reservation');
-      setSubmitting(false);
-    }
+    setSubmitting(true);
+
+    const paystack = new (window as any).PaystackPop();
+    paystack.newTransaction({
+      key: process.env.NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY,
+      email: user.email || '',
+      amount: selectedTier.price * 100, // Paystack expects Kobo
+      currency: 'NGN',
+      metadata: {
+        custom_fields: [
+          {
+            display_name: "Organization",
+            variable_name: "org_name",
+            value: formData.orgName
+          },
+          {
+            display_name: "Contact Person",
+            variable_name: "contact_person",
+            value: formData.contactPerson
+          }
+        ]
+      },
+      onSuccess: async (transaction: any) => {
+        try {
+          await purchaseBoothTransaction(
+            user.uid,
+            {
+              orgName: formData.orgName,
+              contactPerson: formData.contactPerson,
+              phone: formData.phone,
+              sector: formData.sector,
+              website: formData.website,
+              businessDescription: formData.businessDescription,
+              email: user.email || ''
+            },
+            selectedTier.id,
+            transaction.reference
+          );
+
+          setStep('complete');
+          setTimeout(() => {
+            router.push('/booths/permit');
+          }, 1500);
+        } catch (err: any) {
+          setError(err.message || 'Payment successful, but failed to record reservation. Please contact support.');
+          setSubmitting(false);
+        }
+      },
+      onCancel: () => {
+        setSubmitting(false);
+        setError('Transaction was cancelled.');
+      },
+      onError: (err: any) => {
+        setSubmitting(false);
+        setError('Payment gateway error. Please try again.');
+        console.error('Paystack Error:', err);
+      }
+    });
   };
 
   if (authLoading || tiersLoading) {
@@ -140,12 +199,14 @@ function CheckoutContent() {
   return (
     <div className="min-h-screen bg-[#FBFBFA] py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-lg mx-auto">
-        <div className="mb-8 flex justify-center items-center space-x-4 text-sm font-medium">
-          <span className={step === 'auth' ? 'text-slate-900' : 'text-slate-400'}>1. Auth</span>
+        <div className="mb-8 flex justify-center items-center space-x-3 text-xs md:text-sm font-medium">
+          <span className={step === 'auth' ? 'text-slate-900 font-semibold' : 'text-slate-400'}>1. Auth</span>
           <span className="text-slate-300">/</span>
-          <span className={step === 'profile' ? 'text-slate-900' : 'text-slate-400'}>2. Profile</span>
+          <span className={step === 'profile' ? 'text-slate-900 font-semibold' : 'text-slate-400'}>2. Profile</span>
           <span className="text-slate-300">/</span>
-          <span className={step === 'confirm' ? 'text-slate-900' : 'text-slate-400'}>3. Confirm</span>
+          <span className={step === 'business_details' ? 'text-slate-900 font-semibold' : 'text-slate-400'}>3. Details</span>
+          <span className="text-slate-300">/</span>
+          <span className={step === 'confirm' ? 'text-slate-900 font-semibold' : 'text-slate-400'}>4. Confirm</span>
         </div>
 
         {error && (
@@ -254,22 +315,77 @@ function CheckoutContent() {
                   onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                   required
                 />
-                <Select
-                  label="Industry Sector"
+                <Input
+                  label="I SELL (Industry Sector):"
                   value={formData.sector}
-                  onChange={(val) => setFormData(prev => ({ ...prev, sector: val }))}
-                  options={SECTORS.map(s => ({ label: s, value: s }))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, sector: e.target.value }))}
+                  placeholder="e.g. Halal Culinary, Live Breeding, Fresh Meat"
                   required
                 />
                 <div className="pt-4 flex justify-between">
-                  <Button type="button" variant="outline" onClick={() => setStep('auth')}>
+                  <Button type="button" variant="outline" onClick={() => router.push('/booths')}>
                     Back
                   </Button>
                   <Button type="submit">
-                    Continue to Confirmation
+                    Continue
                   </Button>
                 </div>
               </form>
+            </div>
+          </FadeIn>
+        )}
+
+        {step === 'business_details' && (
+          <FadeIn>
+            <div className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-8">
+              <h2 className="text-xl font-heading font-semibold text-slate-900 mb-2">
+                Describe your business in a few words.
+              </h2>
+              <p className="text-slate-500 text-sm mb-6">
+                This helps us recommend the best setup.
+              </p>
+
+              <div className="space-y-5">
+                <Input
+                  label="Website"
+                  placeholder="NLF-VENDOR.WEB.APP"
+                  value={formData.website}
+                  onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))}
+                />
+
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1.5 block">
+                    What does your business do?
+                  </label>
+                  <textarea
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-300 focus:outline-none focus:ring-2 focus:border-[#B8D8C5] focus:ring-[#B8D8C5]/20 min-h-[120px]"
+                    placeholder="WE SELL VENDOR SPACE FOR A CARNIVAL EVENT"
+                    value={formData.businessDescription}
+                    onChange={(e) => setFormData(prev => ({ ...prev, businessDescription: e.target.value }))}
+                  />
+                </div>
+
+                <div className="pt-4 flex justify-between items-center border-t border-slate-100">
+                  <Button type="button" variant="outline" onClick={() => setStep('profile')}>
+                    &larr; Back
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setFormData(prev => ({ ...prev, website: '', businessDescription: '' }));
+                        setStep('confirm');
+                      }}
+                    >
+                      Skip
+                    </Button>
+                    <Button type="button" onClick={() => setStep('confirm')}>
+                      Continue
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
           </FadeIn>
         )}
@@ -313,22 +429,34 @@ function CheckoutContent() {
                     <span className="col-span-2 font-medium">{formData.phone}</span>
                   </div>
                   <div className="grid grid-cols-3">
-                    <span className="text-slate-500">Sector:</span>
+                    <span className="text-slate-500">I SELL:</span>
                     <span className="col-span-2 font-medium">{formData.sector}</span>
                   </div>
+                  {formData.website && (
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-500">Website:</span>
+                      <span className="col-span-2 font-medium text-slate-700">{formData.website}</span>
+                    </div>
+                  )}
+                  {formData.businessDescription && (
+                    <div className="grid grid-cols-3">
+                      <span className="text-slate-500">Description:</span>
+                      <span className="col-span-2 font-medium text-slate-700">{formData.businessDescription}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="flex justify-between pt-4">
-                <Button type="button" variant="outline" onClick={() => setStep('profile')} disabled={submitting}>
+                <Button type="button" variant="outline" onClick={() => setStep('business_details')} disabled={submitting}>
                   Back
                 </Button>
                 <Button onClick={handleConfirm} disabled={submitting}>
                   {submitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Processing...
-                    </>
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Initializing Payment...
+                    </span>
                   ) : (
                     'Confirm Reservation and Pay'
                   )}
@@ -337,6 +465,11 @@ function CheckoutContent() {
             </div>
           </FadeIn>
         )}
+
+        <Script
+          src="https://js.paystack.co/v2/inline.js"
+          strategy="lazyOnload"
+        />
 
         {step === 'complete' && (
           <FadeIn>

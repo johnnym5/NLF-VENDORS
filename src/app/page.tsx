@@ -44,17 +44,17 @@ export default function LandingPage() {
             Secure your commercial exhibition booth at Nigeria&apos;s premier livestock and agribusiness showcase. Abuja, 2026.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md mx-auto sm:max-w-none">
             <Link
               href="/booths"
-              className="inline-flex items-center justify-center gap-2 bg-slate-900 text-white font-medium px-8 py-3.5 rounded-lg hover:bg-slate-800 transition-colors duration-200 text-base shadow-sm"
+              className="inline-flex items-center justify-center gap-2 bg-slate-900 text-white font-medium px-8 py-3.5 rounded-lg hover:bg-slate-800 transition-colors duration-200 text-base shadow-sm w-full sm:w-auto"
             >
               Browse Exhibition Booths
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
               href="/login"
-              className="inline-flex items-center justify-center gap-2 border border-slate-300 text-slate-700 font-medium px-8 py-3.5 rounded-lg hover:bg-slate-50 transition-colors duration-200 text-base"
+              className="inline-flex items-center justify-center gap-2 border border-slate-300 text-slate-700 font-medium px-8 py-3.5 rounded-lg hover:bg-slate-50 transition-colors duration-200 text-base w-full sm:w-auto"
             >
               Vendor Login
             </Link>

@@ -10,6 +10,12 @@ const jetbrains = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrai
 export const metadata: Metadata = {
   title: 'NLF 2026 - Vendor Booth Portal',
   description: 'National Livestock Festival 2026 Vendor Booth Reservation Portal',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 };
 
 export default function RootLayout({

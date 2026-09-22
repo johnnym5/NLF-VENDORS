@@ -16,7 +16,7 @@ const SEED_TIERS = [
     id: 'tier_standard',
     data: {
       id: 'tier_standard',
-      name: 'Standard Meat and Agro Stall',
+      name: 'Basic Booth',
       dimension: '3m x 3m Demarcated Stall',
       colorCode: 'sage',
       price: 150000,
@@ -37,7 +37,7 @@ const SEED_TIERS = [
     id: 'tier_culinary',
     data: {
       id: 'tier_culinary',
-      name: 'Premium Culinary and Pavilion',
+      name: 'Standard Booth',
       dimension: '6m x 3m Covered Pavilion',
       colorCode: 'champagne',
       price: 300000,
@@ -59,7 +59,7 @@ const SEED_TIERS = [
     id: 'tier_corporate',
     data: {
       id: 'tier_corporate',
-      name: 'Corporate and Machinery Island',
+      name: 'Premium Booth',
       dimension: '9m x 6m Island Plot',
       colorCode: 'slate',
       price: 500000,

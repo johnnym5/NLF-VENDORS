@@ -65,7 +65,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' }:
       />
       
       <div 
-        className={`relative w-full bg-white rounded-xl shadow-xl flex flex-col max-h-[90vh] ${sizeStyles[size]}`}
+        className={`relative w-full bg-white rounded-xl sm:rounded-xl shadow-xl flex flex-col max-h-[90vh] sm:max-h-[85vh] ${sizeStyles[size]}`}
         style={{
           opacity: isVisible ? 1 : 0,
           transform: isVisible ? 'scale(1) translateY(0)' : 'scale(0.95) translateY(10px)',

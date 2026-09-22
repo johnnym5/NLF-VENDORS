@@ -22,10 +22,13 @@ export interface BoothOrder {
   email: string;
   phone: string;
   sector: string;
+  website?: string;
+  businessDescription?: string;
   tierId: string;
   tierName: string;
   pricePaid: number;
   assignedBoothNumber: string;
+  vendorSequence: number;
   status: 'ACTIVE' | 'REVOKED';
   paymentReference: string;
   purchasedAt: string;
