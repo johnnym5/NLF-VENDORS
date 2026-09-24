@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Beef, Tent, Tractor, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Beef, Tent, Tractor, ArrowRight } from 'lucide-react';
 
 const boothHighlights = [
   {
@@ -107,21 +107,6 @@ export default function LandingPage() {
       <footer className="border-t border-slate-200 py-6 px-4">
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-slate-500">
           <p>© 2026 National Livestock Festival — Vendor Portal</p>
-          <div className="flex items-center gap-6">
-            <Link
-              href="/setup"
-              className="text-slate-500 hover:text-slate-700 transition-colors"
-            >
-              Setup
-            </Link>
-            <Link
-              href="/admin/booths"
-              className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-700 transition-colors"
-            >
-              <ShieldCheck className="w-4 h-4" />
-              Administration
-            </Link>
-          </div>
         </div>
       </footer>
     </div>
