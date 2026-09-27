@@ -3,8 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { doc, setDoc, collection, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Alert } from '@/components/ui/Alert';
@@ -92,21 +91,19 @@ export default function SetupPage() {
 
   useEffect(() => {
     if (!authLoading && user) {
-      // Check if tiers already exist
       checkExistingData();
     }
   }, [user, authLoading]);
 
   const checkExistingData = async () => {
     try {
-      const snapshot = await getDocs(collection(db, 'booth_tiers'));
-      if (snapshot.size > 0) {
+      const { data } = await supabase.from('booth_tiers').select('id');
+      if (data && data.length > 0) {
         setStep('exists');
       } else {
         setStep('ready');
       }
     } catch {
-      // Collection doesn't exist yet — ready to seed
       setStep('ready');
     }
   };
@@ -118,16 +115,14 @@ export default function SetupPage() {
 
     try {
       for (const tier of SEED_TIERS) {
-        await setDoc(doc(db, 'booth_tiers', tier.id), tier.data, { merge: true });
+        const { error: upsertError } = await supabase.from('booth_tiers').upsert(tier.data);
+        if (upsertError) throw upsertError;
         setSeededCount((prev) => prev + 1);
       }
+      await supabase.from('metadata').upsert({ id: 'global_stats', totalOrders: 0 });
       setStep('done');
     } catch (err: any) {
-      setError(
-        err.message?.includes('PERMISSION_DENIED')
-          ? 'Permission denied. You need admin privileges to seed data. Make sure you have run the set-admin-claim script for your account first.'
-          : err.message || 'Failed to seed data'
-      );
+      setError(err.message || 'Failed to seed data into Supabase');
       setStep('ready');
     }
   };
@@ -172,7 +167,7 @@ export default function SetupPage() {
               First-Time Setup
             </h1>
             <p className="text-sm text-slate-500 text-center mb-8">
-              Initialize the booth tiers in your Firestore database.
+              Initialize the booth tiers in your Supabase database.
             </p>
 
             {error && (
@@ -271,13 +266,6 @@ export default function SetupPage() {
                   </ul>
                 </div>
 
-                {!isAdmin && (
-                  <Alert variant="warning">
-                    Your account does not have admin privileges. Seeding may fail due to Firestore
-                    security rules. Run <code className="text-xs">node scripts/set-admin-claim.js {user.email}</code> first.
-                  </Alert>
-                )}
-
                 <Button onClick={handleSeed} className="w-full">
                   Seed Booth Tiers
                 </Button>
@@ -300,7 +288,7 @@ export default function SetupPage() {
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                   <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
                   <p className="text-sm text-green-800 font-medium">
-                    All {SEED_TIERS.length} booth tiers seeded successfully!
+                    All {SEED_TIERS.length} booth tiers seeded successfully into Supabase!
                   </p>
                 </div>
                 <div className="flex gap-3">

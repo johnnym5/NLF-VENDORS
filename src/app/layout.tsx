@@ -8,6 +8,7 @@ const plusJakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-pl
 const jetbrains = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains' });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://vendors.livestockcarnival.ng'),
   title: 'NLF 2026 - Vendor Booth Portal',
   description: 'National Livestock Festival 2026 Vendor Booth Reservation Portal',
   viewport: {
@@ -15,6 +16,12 @@ export const metadata: Metadata = {
     initialScale: 1,
     maximumScale: 1,
     userScalable: false,
+  },
+  openGraph: {
+    title: 'NLF 2026 - Vendor Booth Portal',
+    description: 'National Livestock Festival 2026 Vendor Booth Reservation Portal',
+    url: 'https://vendors.livestockcarnival.ng',
+    siteName: 'NLF Vendors',
   },
 };
 

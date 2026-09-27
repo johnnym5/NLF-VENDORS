@@ -1,20 +1,18 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import {
-  User,
-  onAuthStateChanged,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut,
-  updateProfile
-} from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { supabase } from '@/lib/supabase';
+
+export interface AppUser {
+  id: string;
+  uid: string;
+  email: string;
+  displayName?: string;
+  orgName?: string;
+}
 
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
   loading: boolean;
   isAdmin: boolean;
   signInWithGoogle: () => Promise<void>;
@@ -26,57 +24,96 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          const tokenResult = await currentUser.getIdTokenResult();
-          const hasAdminClaim = tokenResult.claims.admin === true;
-          const isKnownAdminEmail = currentUser.email?.toLowerCase() === 'admin@nlf.com';
-          setIsAdmin(hasAdminClaim || isKnownAdminEmail);
-        } catch (error) {
-          console.error("Failed to fetch custom claims:", error);
-          const isKnownAdminEmail = currentUser.email?.toLowerCase() === 'admin@nlf.com';
-          setIsAdmin(isKnownAdminEmail);
-        }
+    // Check initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const email = session.user.email || '';
+        const orgName = session.user.user_metadata?.orgName;
+        const appUser: AppUser = {
+          id: session.user.id,
+          uid: session.user.id,
+          email,
+          displayName: orgName || session.user.user_metadata?.full_name || email.split('@')[0],
+          orgName,
+        };
+        setUser(appUser);
+        setIsAdmin(email.toLowerCase() === 'admin@nlf.com' || session.user.app_metadata?.role === 'admin');
       } else {
+        setUser(null);
         setIsAdmin(false);
       }
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const email = session.user.email || '';
+        const orgName = session.user.user_metadata?.orgName;
+        const appUser: AppUser = {
+          id: session.user.id,
+          uid: session.user.id,
+          email,
+          displayName: orgName || session.user.user_metadata?.full_name || email.split('@')[0],
+          orgName,
+        };
+        setUser(appUser);
+        setIsAdmin(email.toLowerCase() === 'admin@nlf.com' || session.user.app_metadata?.role === 'admin');
+      } else {
+        setUser(null);
+        setIsAdmin(false);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signInWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vendors.livestockcarnival.ng';
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${origin}/login`,
+      },
+    });
+    if (error) throw error;
   };
 
   const signInWithEmail = async (e: string, p: string) => {
-    await signInWithEmailAndPassword(auth, e, p);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: e,
+      password: p,
+    });
+    if (error) throw error;
   };
 
   const signUpWithEmail = async (e: string, p: string, orgName?: string) => {
-    const cred = await createUserWithEmailAndPassword(auth, e, p);
-    if (orgName && cred.user) {
-      try {
-        await updateProfile(cred.user, { displayName: orgName });
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(`nlf_org_${cred.user.uid}`, orgName);
-        }
-      } catch (err) {
-        console.error('Failed to update profile displayName:', err);
-      }
+    const { data, error } = await supabase.auth.signUp({
+      email: e,
+      password: p,
+      options: {
+        data: {
+          orgName: orgName || '',
+        },
+      },
+    });
+    if (error) throw error;
+    if (orgName && data.user && typeof window !== 'undefined') {
+      localStorage.setItem(`nlf_org_${data.user.id}`, orgName);
     }
   };
 
   const signOutUser = async () => {
-    await signOut(auth);
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   };
 
   return (

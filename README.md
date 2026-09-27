@@ -3,9 +3,11 @@
 [![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
-[![Firebase](https://img.shields.io/badge/Firebase-Firestore_%26_Auth-FFA611?style=flat&logo=firebase)](https://firebase.google.com/)
+[![Supabase](https://img.shields.io/badge/Supabase-Database_%26_Auth-3ECF8E?style=flat&logo=supabase)](https://supabase.com/)
 
 Official commercial exhibition booth reservation, allocation management, and digital accreditation portal for the **National Livestock Festival (NLF) 2026**, organized in collaboration with the **Federal Ministry of Livestock Development**, Abuja, Nigeria.
+
+Live Production URL: [https://vendors.livestockcarnival.ng](https://vendors.livestockcarnival.ng)
 
 ---
 
@@ -28,7 +30,7 @@ From initial booth discovery and tier selection to automated stall assignment an
   * Agricultural & Farm Machinery
   * Cold-Chain Logistics & Storage
   * Veterinary Tech & Pharmaceuticals
-* **Secure Authentication:** Firebase-powered email and password authentication for vendor accounts.
+* **Secure Authentication:** Supabase-powered email, password, and Google OAuth authentication for vendor accounts.
 * **Checkout & Booking Pipeline:** Order processing with payment reference capture and real-time inventory decrement.
 * **Digital Exhibition Permit & QR Pass:** Real-time digital booth pass featuring assigned booth numbers (e.g., `ST-01`, `PV-04`), official status badges, and scannable QR verification for on-site accreditation desks.
 
@@ -54,49 +56,10 @@ From initial booth discovery and tier selection to automated stall assignment an
 
 * **Frontend:** [Next.js 14](https://nextjs.org/) (App Router, Server & Client Components)
 * **Language:** [TypeScript](https://www.typescriptlang.org/)
-* **Styling:** [Tailwind CSS](https://tailwindcss.com/) with a bespoke executive palette:
-  * **Sage Green** (`#1E4D38`) — Standard & Agricultural Stalls
-  * **Champagne Gold** (`#8D6B1B`) — Premium & Culinary Pavilions
-  * **Slate Gray** (`#1F2937`) — Corporate & Machinery Plots
-* **Backend & Database:** [Google Firebase Firestore](https://firebase.google.com/docs/firestore) (Real-time snapshots, transactions & security rules)
-* **Authentication:** [Firebase Authentication](https://firebase.google.com/docs/auth)
-* **Utilities & Icons:** [Lucide React](https://lucide.dev/), [`qrcode.react`](https://www.npmjs.com/package/qrcode.react)
-
----
-
-## 📂 Project Structure
-
-```text
-NLF-VENDORS/
-├── public/                     # Static assets and icons
-├── scripts/                    # Database initialization & administrative scripts
-│   ├── seed-client.mjs         # Client SDK tier seeder
-│   ├── seed-tiers.js           # Firebase Admin SDK seeder
-│   └── set-admin-claim.js      # Script to set admin custom claims
-├── src/
-│   ├── app/
-│   │   ├── admin/booths/       # Secretariat booth management dashboard
-│   │   ├── booths/             # Vendor booth catalog
-│   │   │   ├── checkout/       # Checkout & booking submission
-│   │   │   └── permit/         # Digital exhibition permit & QR display
-│   │   ├── login/              # Vendor login & authentication
-│   │   ├── setup/              # First-time tier setup utility
-│   │   ├── globals.css         # Global Tailwind styles & color tokens
-│   │   ├── layout.tsx          # Root app layout
-│   │   └── page.tsx            # Main landing page
-│   ├── components/ui/          # Accessible UI primitives (Alert, Badge, Button, Modal, etc.)
-│   └── lib/                    # Core utilities, Firebase client, and type definitions
-│       ├── auth.tsx            # Auth context provider & hooks
-│       ├── design-tokens.ts    # Design constants & currency formatters
-│       ├── firebase.ts         # Firebase client initialization
-│       ├── firestore.ts        # Firestore data hooks & transaction helpers
-│       └── types.ts            # TypeScript interfaces & sector enums
-├── .env.local.example          # Sample environment variables template
-├── firestore.rules             # Production Firestore security rules
-├── next.config.mjs             # Next.js configuration
-├── tailwind.config.ts          # Tailwind theme extensions
-└── tsconfig.json               # TypeScript compiler config
-```
+* **Styling:** [Tailwind CSS](https://tailwindcss.com/)
+* **Backend & Database:** [Supabase PostgreSQL](https://supabase.com/) (Real-time snapshots & transactions)
+* **Authentication:** [Supabase Auth](https://supabase.com/docs/guides/auth)
+* **Domain:** [vendors.livestockcarnival.ng](https://vendors.livestockcarnival.ng)
 
 ---
 
@@ -114,45 +77,24 @@ npm install
 ```
 
 ### 3. Configure Environment Variables
-Copy `.env.local.example` to `.env.local` and populate with your Firebase credentials:
+Copy `.env.local.example` to `.env.local` and populate with your Supabase credentials:
 ```bash
 cp .env.local.example .env.local
 ```
 
 Example configuration:
 ```env
-NEXT_PUBLIC_FIREBASE_API_KEY="your-api-key"
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="your-project.firebaseapp.com"
-NEXT_PUBLIC_FIREBASE_PROJECT_ID="your-project-id"
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="your-project.firebasestorage.app"
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="your-sender-id"
-NEXT_PUBLIC_FIREBASE_APP_ID="your-app-id"
-NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="your-measurement-id"
+NEXT_PUBLIC_SUPABASE_URL=https://bqwohpjschaditdkrdra.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_HYjA-ZuSRTwNMTYBdsMfmA_Kvot5Ylg
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
-### 4. Seed Booth Tiers
-Initialize the Firestore database with default exhibition tiers:
-```bash
-# Option A: Seed via browser
-Navigate to http://localhost:3000/setup after running the dev server
+### 4. Setup Database
+Run `supabase_schema.sql` in your Supabase SQL Editor.
 
-# Option B: Seed via Node script
-node scripts/seed-client.mjs
-```
-
-### 5. Run Development Server
-```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
----
-
-## 🔒 Security & Firestore Rules
-
-Database access is protected by granular [firestore.rules](firestore.rules):
-* **`booth_tiers`**: Publicly readable by all visitors; write operations restricted to authenticated administrators.
-* **`booth_orders`**: Vendors can read only their own orders; order creation is restricted to verified users; administrative overrides and revocations require admin claims.
+### 5. Seed Booth Tiers
+Initialize the database with default exhibition tiers:
+Navigate to [https://vendors.livestockcarnival.ng/setup](https://vendors.livestockcarnival.ng/setup) or `http://localhost:3000/setup` after logging in as `admin@nlf.com`.
 
 ---
 

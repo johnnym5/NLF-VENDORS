@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.17.0",
+    "@supabase/supabase-js": "^2.117.2",
     "firebase": "^10.14.0",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.453.0",
