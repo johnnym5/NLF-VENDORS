@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Profile doesn't exist — create it
-      const isKnownAdmin = email.toLowerCase() === 'admin@nlf.com';
+      const isKnownAdmin = email.toLowerCase() === 'admin@livestockcarnival.ng' || email.toLowerCase() === 'admin@nlf.com';
       const role = isKnownAdmin ? 'admin' : 'vendor';
       const newProfile = {
         id: userId,
@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return {
       id: userId,
       email,
-      role: email.toLowerCase() === 'admin@nlf.com' ? 'admin' : 'vendor',
+      role: email.toLowerCase() === 'admin@livestockcarnival.ng' || email.toLowerCase() === 'admin@nlf.com' ? 'admin' : 'vendor',
     };
   };
 
@@ -111,7 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const email = sessionUser.email || '';
     const prof = await fetchOrCreateProfile(sessionUser.id, email, sessionUser.user_metadata);
-    const adminRole = prof?.role === 'admin' || email.toLowerCase() === 'admin@nlf.com';
+    const adminRole = prof?.role === 'admin' || email.toLowerCase() === 'admin@livestockcarnival.ng' || email.toLowerCase() === 'admin@nlf.com';
 
     const appUser: AppUser = {
       id: sessionUser.id,
@@ -180,7 +180,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return new Promise<void>((resolve) => {
       if (!popup) {
-        // Fallback to direct redirect if popups blocked
         window.location.href = data.url;
         return resolve();
       }

@@ -180,7 +180,7 @@ export default function SetupPage() {
             {!user && (
               <div className="space-y-4">
                 <p className="text-sm text-slate-600 text-center">
-                  Sign in with your administrator account (<code className="text-xs bg-slate-100 px-1 py-0.5 rounded">admin@nlf.com</code>) to initialize the database.
+                  Sign in with your administrator account (<code className="text-xs bg-slate-100 px-1 py-0.5 rounded">admin@livestockcarnival.ng</code>) to initialize the database.
                 </p>
 
                 <form
@@ -197,7 +197,7 @@ export default function SetupPage() {
                 >
                   <input
                     type="email"
-                    placeholder="Admin Email (e.g. admin@nlf.com)"
+                    placeholder="Admin Email (e.g. admin@livestockcarnival.ng)"
                     value={setupEmail}
                     onChange={(e) => setSetupEmail(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
