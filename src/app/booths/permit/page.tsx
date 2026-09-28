@@ -1,22 +1,24 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, Loader2, Clock, CheckCircle, AlertTriangle, CreditCard, Landmark, PhoneCall, Plus } from 'lucide-react';
+import { MapPin, Loader2, Clock, CheckCircle2, AlertTriangle, CreditCard, Plus, ArrowRight, ShieldCheck, DollarSign } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/lib/auth';
 import { useVendorReservations, updateReservationStatus } from '@/lib/supabase-queries';
 import { formatNaira } from '@/lib/design-tokens';
+import { PAYSTACK_PUBLIC_KEY } from '@/lib/paystack';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { ReservationStatus } from '@/lib/types';
 
 function PermitContent() {
   const router = useRouter();
   const { user, loading: authLoading, signOutUser } = useAuth();
-  const { reservations, loading: resLoading } = useVendorReservations(user?.uid || '');
+  const { reservations, loading: resLoading } = useVendorReservations(user?.uid || undefined);
 
   const [activeReservationIndex, setActiveReservationIndex] = useState<number | null>(null);
   const [showPayModal, setShowPayModal] = useState(false);
@@ -40,16 +42,66 @@ function PermitContent() {
     router.push('/booths');
   };
 
-  const executeSettlePayment = async (reservationId: string) => {
+  const currentRes = activeReservationIndex !== null && reservations[activeReservationIndex]
+    ? reservations[activeReservationIndex]
+    : reservations[reservations.length - 1];
+
+  const handlePayWithPaystack = async () => {
+    if (!currentRes || !user) return;
     setPaying(true);
     setPaymentError(null);
+
     try {
-      const generatedRef = 'REM-' + Math.random().toString(36).substring(2, 11).toUpperCase();
-      await updateReservationStatus(reservationId, 'CONFIRMED_PAID', generatedRef);
-      setShowPayModal(false);
+      // Ensure Paystack Inline script is loaded
+      if (typeof window !== 'undefined' && !(window as any).PaystackPop) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://js.paystack.co/v1/inline.js';
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load Paystack payment gateway'));
+          document.body.appendChild(script);
+        });
+      }
+
+      const handler = (window as any).PaystackPop.setup({
+        key: PAYSTACK_PUBLIC_KEY,
+        email: currentRes.profile?.email || user.email || '',
+        amount: Math.round(currentRes.totalAmount * 100), // Kobo conversion
+        currency: 'NGN',
+        ref: 'PST-' + Math.random().toString(36).substring(2, 10).toUpperCase(),
+        metadata: {
+          custom_fields: [
+            {
+              display_name: 'Organization Name',
+              variable_name: 'org_name',
+              value: currentRes.profile?.orgName || 'Exhibitor',
+            },
+            {
+              display_name: 'Reservation Reference',
+              variable_name: 'reservation_ref',
+              value: currentRes.referenceId,
+            },
+          ],
+        },
+        callback: async function (response: any) {
+          try {
+            await updateReservationStatus(currentRes.id, 'CONFIRMED_PAID', response.reference);
+            setShowPayModal(false);
+          } catch (err: any) {
+            setPaymentError(err.message || 'Payment confirmed by Paystack, but database record update failed.');
+          } finally {
+            setPaying(false);
+          }
+        },
+        onClose: function () {
+          setPaying(false);
+        },
+      });
+
+      handler.openIframe();
     } catch (err: any) {
-      setPaymentError(err.message || 'Payment processing failed');
-    } finally {
+      console.error('Paystack initialization error:', err);
+      setPaymentError(err.message || 'Failed to initialize Paystack gateway');
       setPaying(false);
     }
   };
@@ -74,10 +126,6 @@ function PermitContent() {
       </div>
     );
   }
-
-  const currentRes = activeReservationIndex !== null && reservations[activeReservationIndex]
-    ? reservations[activeReservationIndex]
-    : reservations[reservations.length - 1];
 
   const isPendingApproval = currentRes.status === 'RESERVED_PENDING_APPROVAL' || currentRes.status === 'CART';
   const isApprovedPendingPayment = currentRes.status === 'APPROVED_PENDING_PAYMENT';
@@ -130,9 +178,9 @@ function PermitContent() {
               <div className="flex items-start gap-2 text-amber-900">
                 <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="font-bold text-sm">Pending Secretariat Approval</h4>
+                  <h4 className="font-bold text-sm">Application Pending Secretariat Approval</h4>
                   <p className="text-xs text-amber-800 mt-0.5">
-                    Your booth space request is currently under review by the Secretariat Committee. Custom requirements and additional fees will be attached upon approval.
+                    Your booth space request is currently under review by the Secretariat Committee. Once accepted, you will be able to proceed to Pay for Booth.
                   </p>
                 </div>
               </div>
@@ -142,29 +190,50 @@ function PermitContent() {
 
         {isApprovedPendingPayment && (
           <FadeIn delay={0}>
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-5 shadow-sm">
+            <div className="mb-6 bg-[#E8F3ED] border-2 border-[#1E4D38] rounded-xl p-6 shadow-md">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <span className="inline-block px-2.5 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800 mb-1">
-                    APPROVED BY SECRETARIAT
+                  <span className="inline-block px-2.5 py-0.5 rounded text-xs font-bold bg-[#1E4D38] text-white mb-2 uppercase tracking-wider">
+                    Application Approved
                   </span>
-                  <h4 className="font-bold text-slate-900 text-base">Awaiting Remittance Payment</h4>
+                  <h4 className="font-bold text-slate-900 text-lg">Your Booth Application Has Been Accepted!</h4>
                   <p className="text-xs text-slate-600 mt-1">
-                    Base Rate: <span className="font-semibold">{formatNaira(currentRes.basePrice)}</span>
+                    Base Space Rate: <span className="font-semibold">{formatNaira(currentRes.basePrice)}</span>
                     {currentRes.additionalFees > 0 && (
                       <> + Custom Surcharge: <span className="font-semibold">{formatNaira(currentRes.additionalFees)}</span></>
                     )}
                   </p>
-                  <p className="text-sm font-bold text-slate-900 mt-1">
-                    Total Due: {formatNaira(currentRes.totalAmount)}
+                  <p className="text-base font-bold text-slate-900 mt-1">
+                    Total Amount Due: {formatNaira(currentRes.totalAmount)}
                   </p>
                 </div>
                 <Button
                   onClick={() => setShowPayModal(true)}
-                  className="bg-[#1E4D38] hover:bg-[#153627] text-white flex-shrink-0 shadow"
+                  className="bg-[#1E4D38] hover:bg-[#153627] text-white font-bold text-sm px-6 py-3.5 shadow-md flex-shrink-0"
                 >
-                  Settle Payment ({formatNaira(currentRes.totalAmount)})
+                  Pay for Booth ({formatNaira(currentRes.totalAmount)}) &rarr;
                 </Button>
+              </div>
+            </div>
+          </FadeIn>
+        )}
+
+        {isConfirmedPaid && (
+          <FadeIn delay={0}>
+            <div className="mb-6 bg-emerald-50 border-2 border-emerald-500 rounded-xl p-5 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-600 text-white rounded-full flex-shrink-0">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 text-white mb-0.5 uppercase tracking-wider">
+                    Payment Received
+                  </span>
+                  <h4 className="font-bold text-slate-900 text-base">Payment Received & Confirmed</h4>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    Your payment of <strong className="text-slate-900">{formatNaira(currentRes.totalAmount)}</strong> has been received and verified. Your digital exhibition permit and accreditation pass are active.
+                  </p>
+                </div>
               </div>
             </div>
           </FadeIn>
@@ -210,23 +279,30 @@ function PermitContent() {
                 )}
               </div>
 
+              {/* Vendor Info Section */}
               <div className="bg-slate-50 rounded-lg p-6 mb-6 text-left border border-slate-100">
-                <h2 className="text-xl font-heading font-bold text-slate-900 mb-3">
+                <h2 className="text-xl font-heading font-bold text-slate-900 mb-4">
                   {currentRes.profile?.orgName || 'Exhibitor Organization'}
                 </h2>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm text-slate-600">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-600">
                   <div>
                     <span className="block text-slate-400 text-xs mb-0.5">Representative</span>
-                    <span className="font-medium text-slate-800">{currentRes.profile?.contactPerson || 'N/A'}</span>
+                    <span className="font-medium text-slate-800 break-words">{currentRes.profile?.contactPerson || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="block text-slate-400 text-xs mb-1">Email</span>
-                    <span className="font-medium text-slate-800">{currentRes.profile?.email || user.email}</span>
+                    <span className="block text-slate-400 text-xs mb-0.5">What I Sell</span>
+                    <span className="font-medium text-slate-800 break-words">{currentRes.profile?.sector || 'General Merchant'}</span>
                   </div>
-                  <div>
-                    <span className="block text-slate-400 text-xs mb-1">Phone</span>
-                    <span className="font-medium text-slate-800">{currentRes.profile?.phone || 'N/A'}</span>
+                  <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200/60">
+                    <div>
+                      <span className="block text-slate-400 text-xs mb-0.5">Email</span>
+                      <span className="font-medium text-slate-800 break-all">{currentRes.profile?.email || user.email}</span>
+                    </div>
+                    <div>
+                      <span className="block text-slate-400 text-xs mb-0.5">Phone</span>
+                      <span className="font-medium text-slate-800 break-all">{currentRes.profile?.phone || 'N/A'}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -235,9 +311,9 @@ function PermitContent() {
                 <Badge variant={currentRes.tierName.toLowerCase().includes('sage') ? 'sage' : currentRes.tierName.toLowerCase().includes('champagne') ? 'champagne' : 'slate'}>
                   {currentRes.tierName}
                 </Badge>
-                {isConfirmedPaid && <Badge variant="active" className="bg-green-100 text-green-800">Confirmed & Paid</Badge>}
-                {isApprovedPendingPayment && <Badge variant="champagne">Approved - Awaiting Payment</Badge>}
-                {isPendingApproval && <Badge variant="slate">Pending Approval</Badge>}
+                {isConfirmedPaid && <Badge variant="active" className="bg-emerald-100 text-emerald-900 font-bold border border-emerald-300">Payment Received & Confirmed</Badge>}
+                {isApprovedPendingPayment && <Badge variant="champagne" className="bg-amber-100 text-amber-900 font-bold border border-amber-300">Application Approved — Proceed to Pay</Badge>}
+                {isPendingApproval && <Badge variant="slate">Pending Secretariat Review</Badge>}
                 {isRevoked && <Badge variant="revoked">Revoked</Badge>}
               </div>
             </div>
@@ -289,21 +365,30 @@ function PermitContent() {
 
             {/* QR Code Section */}
             <div className="p-8 border-b border-slate-100 flex flex-col items-center justify-center bg-white">
-              <div className="relative p-2 bg-white rounded-xl shadow-sm border border-slate-200">
-                <QRCodeSVG
-                  value={`REF:${currentRes.referenceId}|ORG:${currentRes.profile?.orgName || ''}|BOOTH:${currentRes.assignedBoothNumber}|STATUS:${currentRes.status}`}
-                  size={190}
-                  level="H"
-                  includeMargin={true}
-                />
-                {isRevoked && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-                    <span className="text-3xl font-bold text-red-600 rotate-[-15deg] border-4 border-red-600 px-4 py-1 rounded">
-                      VOID
-                    </span>
-                  </div>
-                )}
-              </div>
+              {isConfirmedPaid ? (
+                <div className="relative p-2 bg-white rounded-xl shadow-sm border border-slate-200">
+                  <QRCodeSVG
+                    value={`REF:${currentRes.referenceId}|ORG:${currentRes.profile?.orgName || ''}|BOOTH:${currentRes.assignedBoothNumber}|STATUS:${currentRes.status}`}
+                    size={190}
+                    level="H"
+                    includeMargin={true}
+                  />
+                  {isRevoked && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+                      <span className="text-3xl font-bold text-red-600 rotate-[-15deg] border-4 border-red-600 px-4 py-1 rounded">
+                        VOID
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center bg-slate-50 p-6 rounded-xl border border-slate-200 w-full max-w-sm">
+                  <Clock className="w-8 h-8 text-amber-600 mx-auto mb-2" />
+                  <h4 className="font-semibold text-slate-800 text-sm mb-1">QR Accreditation Pass Pending</h4>
+                  <p className="text-xs text-slate-500">Your scannable gate pass will activate automatically as soon as payment is settled.</p>
+                </div>
+              )}
+
               <p className="text-xs text-slate-500 mt-4 text-center max-w-xs">
                 Scan barcode at Abuja Festival Gate 3 Accreditation Checkpoint
               </p>
@@ -312,7 +397,9 @@ function PermitContent() {
             {/* Footer */}
             <div className="p-6 bg-slate-50 flex flex-col sm:flex-row justify-between items-center text-sm text-slate-500 gap-4">
               <div>
-                <span className="block text-slate-700 font-medium">Total Price: {formatNaira(currentRes.totalAmount)}</span>
+                <span className="block text-slate-700 font-medium">
+                  {isConfirmedPaid ? 'Payment Status: Payment Received' : `Total Due: ${formatNaira(currentRes.totalAmount)}`}
+                </span>
                 <span className="block text-xs text-slate-400">Created: {new Date(currentRes.createdAt).toLocaleDateString()}</span>
               </div>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
@@ -322,21 +409,21 @@ function PermitContent() {
           </div>
         </FadeIn>
 
-        {/* Remittance Payment Settlement Modal */}
+        {/* Paystack Payment Settlement Modal */}
         <Modal
           isOpen={showPayModal}
           onClose={() => !paying && setShowPayModal(false)}
-          title="Secretariat Remittance Settlement"
+          title="Pay for Exhibition Booth"
           size="md"
         >
           <div className="space-y-6">
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-4 flex justify-between items-center">
+            <div className="bg-[#E8F3ED] border border-[#B8D8C5] rounded-xl p-4 flex justify-between items-center">
               <div>
-                <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Remittance Due</p>
-                <p className="text-2xl font-black text-slate-900 font-heading">{formatNaira(currentRes.totalAmount)}</p>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Amount Due</p>
+                <p className="text-2xl font-black text-[#133325] font-heading">{formatNaira(currentRes.totalAmount)}</p>
               </div>
               <div className="text-right">
-                <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Exhibition Space</p>
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Exhibition Space</p>
                 <p className="text-sm font-semibold text-[#1E4D38]">{currentRes.tierName}</p>
               </div>
             </div>
@@ -346,18 +433,18 @@ function PermitContent() {
             )}
 
             <div className="space-y-3">
-              <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-1">
-                Select Settlement Payment Channel
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
+                Paystack Live Secure Gateway
               </label>
 
-              <div className="p-4 border border-[#1E4D38] bg-[#1E4D38]/5 rounded-xl flex items-center justify-between">
+              <div className="p-4 border-2 border-[#1E4D38] bg-[#1E4D38]/5 rounded-xl flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-[#1E4D38] text-white">
-                    <CreditCard size={18} />
+                  <div className="p-2.5 rounded-lg bg-[#1E4D38] text-white">
+                    <CreditCard size={20} />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-900">Commercial Debit / NIBSS Direct Remittance</p>
-                    <p className="text-xs text-slate-500">Instant confirmation & stock allocation</p>
+                    <p className="text-sm font-bold text-slate-900">Paystack Checkout Gateway</p>
+                    <p className="text-xs text-slate-500">Naira Debit Cards, Bank Transfer, USSD, Apple Pay</p>
                   </div>
                 </div>
               </div>
@@ -368,17 +455,17 @@ function PermitContent() {
                 Cancel
               </Button>
               <Button
-                className="flex-1 bg-[#1E4D38] hover:bg-[#153627] text-white"
-                onClick={() => executeSettlePayment(currentRes.id)}
+                className="flex-1 bg-[#1E4D38] hover:bg-[#153627] text-white font-bold"
+                onClick={handlePayWithPaystack}
                 disabled={paying}
               >
                 {paying ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Confirming Remittance...
+                    Connecting to Paystack...
                   </>
                 ) : (
-                  `Authorize Settlement (${formatNaira(currentRes.totalAmount)})`
+                  `Pay ${formatNaira(currentRes.totalAmount)} via Paystack`
                 )}
               </Button>
             </div>
@@ -392,7 +479,7 @@ function PermitContent() {
 
 export default function PermitPage() {
   return (
-    <React.Suspense
+    <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA]">
           <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
@@ -400,6 +487,6 @@ export default function PermitPage() {
       }
     >
       <PermitContent />
-    </React.Suspense>
+    </Suspense>
   );
 }

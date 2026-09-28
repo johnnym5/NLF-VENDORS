@@ -10,7 +10,6 @@ import { FadeIn } from '@/components/ui/FadeIn';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { SECTORS } from '@/lib/types';
 
 type Step = 'auth' | 'profile' | 'custom_requests' | 'confirm' | 'complete';
 
@@ -44,7 +43,7 @@ function CheckoutContent() {
     orgName: '',
     contactPerson: '',
     phone: '',
-    sector: '',
+    sector: '', // Represents "What I sell:"
     website: '',
     businessDescription: '',
     customRequestText: '',
@@ -125,7 +124,7 @@ function CheckoutContent() {
           orgName: formData.orgName,
           contactPerson: formData.contactPerson,
           phone: formData.phone,
-          sector: formData.sector || SECTORS[0],
+          sector: formData.sector || 'General Goods & Services',
           email: user.email,
           website: formData.website,
           businessDescription: formData.businessDescription,
@@ -137,7 +136,7 @@ function CheckoutContent() {
       setStep('complete');
       setTimeout(() => {
         router.push('/booths/permit');
-      }, 1500);
+      }, 1200);
     } catch (err: any) {
       console.error('Failed to save space:', err);
       setError(err.message || 'Failed to save space reservation');
@@ -158,7 +157,6 @@ function CheckoutContent() {
       <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA] p-4">
         <div className="text-center">
           <p className="text-slate-600 mb-4">No tier selected or tier not found.</p>
-
           <Button onClick={() => router.push('/booths')}>Browse Exhibition Booths</Button>
         </div>
       </div>
@@ -316,24 +314,14 @@ function CheckoutContent() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Industry Sector Classification *
-                    </label>
-                    <select
-                      value={formData.sector}
-                      onChange={(e) => setFormData(prev => ({ ...prev, sector: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
-                      required
-                    >
-                      <option value="">Select industry category...</option>
-                      {SECTORS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* Free-form "What I sell:" text field */}
+                  <Input
+                    label="What I sell: *"
+                    placeholder="e.g. Halal Frozen Meat, Vaccines, Agricultural Tractors, Cold Storage, etc."
+                    value={formData.sector}
+                    onChange={(e) => setFormData(prev => ({ ...prev, sector: e.target.value }))}
+                    required
+                  />
 
                   <Input
                     label="Website (Optional)"
@@ -442,8 +430,8 @@ function CheckoutContent() {
                     <span className="text-slate-800">{formData.contactPerson} ({formData.phone})</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-200 pb-2">
-                    <span className="text-slate-500">Industry Sector:</span>
-                    <span className="text-slate-800">{formData.sector}</span>
+                    <span className="text-slate-500">What I Sell:</span>
+                    <span className="text-slate-800 font-medium">{formData.sector}</span>
                   </div>
                   <div className="flex justify-between border-b border-slate-200 pb-2">
                     <span className="text-slate-500">Estimated Space Rate:</span>
@@ -463,7 +451,8 @@ function CheckoutContent() {
                 <div className="flex justify-between items-center pt-2">
                   <Button variant="outline" onClick={() => setStep('custom_requests')}>
                     &larr; Back
-                  </Button>                  <Button
+                  </Button>
+                  <Button
                     onClick={handleSaveSpace}
                     disabled={submitting}
                     className="bg-[#1E4D38] hover:bg-[#163827] text-white flex items-center gap-2"
