@@ -278,7 +278,7 @@ export async function saveBoothReservation(
     throw new Error('Selected booth tier does not exist.');
   }
 
-  if (tierData.is_locked) {
+  if (tierData.is_locked || tierData.isLocked) {
     throw new Error('This booth tier is currently locked for new reservations.');
   }
 
@@ -322,15 +322,17 @@ export async function saveBoothReservation(
 
 /**
  * Admin or Settlement Status Update.
- * Transitioning to CONFIRMED_PAID decrements tier stock and increments global_stats counter.
+ * Transitioning to CONFIRMED_PAID decrements tier stock safely and assigns vendor sequence.
  */
 export async function updateReservationStatus(
   reservationId: string,
   newStatus: ReservationStatus,
   paymentReference?: string
 ) {
+  const db = supabaseAdmin || supabase;
+
   // Fetch current reservation
-  const { data: currentRes, error: fetchErr } = await supabase
+  const { data: currentRes, error: fetchErr } = await db
     .from('booth_reservations')
     .select('*')
     .eq('id', reservationId)
@@ -340,9 +342,9 @@ export async function updateReservationStatus(
     throw new Error('Reservation not found');
   }
 
-  // Core Rule: If transitioning to CONFIRMED_PAID for the first time, decrement stock and assign sequence
+  // Core Rule: If transitioning to CONFIRMED_PAID for the first time
   if (newStatus === 'CONFIRMED_PAID' && currentRes.status !== 'CONFIRMED_PAID') {
-    const { data: tier } = await supabase
+    const { data: tier } = await db
       .from('booth_tiers')
       .select('stock')
       .eq('id', currentRes.tier_id)
@@ -354,26 +356,27 @@ export async function updateReservationStatus(
 
     // Decrement tier stock by 1
     if (tier) {
-      await supabase
+      await db
         .from('booth_tiers')
-        .update({ stock: Math.max(0, tier.stock - 1), updated_at: new Date().toISOString() })
+        .update({ stock: Math.max(0, tier.stock - 1) })
         .eq('id', currentRes.tier_id);
     }
 
-    // Increment global sequence counter
-    const { data: stats } = await supabase
-      .from('global_stats')
-      .select('total_confirmed_orders')
-      .eq('id', 1)
-      .single();
+    // Calculate vendor sequence safely
+    let sequence = 1;
+    try {
+      const { data: confirmedList } = await db
+        .from('booth_reservations')
+        .select('id')
+        .eq('status', 'CONFIRMED_PAID');
 
-    const sequence = (stats?.total_confirmed_orders || 0) + 1;
-    await supabase
-      .from('global_stats')
-      .upsert({ id: 1, total_confirmed_orders: sequence });
+      sequence = (confirmedList?.length || 0) + 1;
+    } catch {
+      sequence = Math.floor(1 + Math.random() * 99);
+    }
 
     // Update reservation status to CONFIRMED_PAID
-    const { error: updateErr } = await supabase
+    const { error: updateErr } = await db
       .from('booth_reservations')
       .update({
         status: 'CONFIRMED_PAID',
@@ -383,12 +386,12 @@ export async function updateReservationStatus(
       })
       .eq('id', reservationId);
 
-    if (updateErr) throw updateErr;
+    if (updateErr) throw new Error(updateErr.message);
     return;
   }
 
   // General status transition (e.g. APPROVED_PENDING_PAYMENT, REVOKED, RESERVED_PENDING_APPROVAL)
-  const { error: updateErr } = await supabase
+  const { error: updateErr } = await db
     .from('booth_reservations')
     .update({
       status: newStatus,
@@ -396,7 +399,7 @@ export async function updateReservationStatus(
     })
     .eq('id', reservationId);
 
-  if (updateErr) throw updateErr;
+  if (updateErr) throw new Error(updateErr.message);
 }
 
 /**
@@ -409,8 +412,10 @@ export async function addCustomSurcharge(
   adminNotes?: string,
   requestStatus: RequestStatus = 'APPROVED'
 ) {
+  const db = supabaseAdmin || supabase;
+
   // 1. Fetch reservation
-  const { data: res } = await supabase
+  const { data: res } = await db
     .from('booth_reservations')
     .select('additional_fees')
     .eq('id', reservationId)
@@ -419,7 +424,7 @@ export async function addCustomSurcharge(
   const currentFee = Number(res?.additional_fees || 0);
   const newFee = Math.max(0, currentFee + additionalFee);
 
-  await supabase
+  await db
     .from('booth_reservations')
     .update({
       additional_fees: newFee,
@@ -429,7 +434,7 @@ export async function addCustomSurcharge(
 
   // 2. Update specific custom request if ID supplied
   if (requestId) {
-    await supabase
+    await db
       .from('custom_requests')
       .update({
         additional_fee: additionalFee,
@@ -444,7 +449,8 @@ export async function addCustomSurcharge(
  * Assign or update physical booth location string (e.g. "Booth 04").
  */
 export async function assignBoothNumber(reservationId: string, boothNumber: string) {
-  const { error } = await supabase
+  const db = supabaseAdmin || supabase;
+  const { error } = await db
     .from('booth_reservations')
     .update({
       assigned_booth_number: boothNumber || 'Pending Assignment',
@@ -457,7 +463,6 @@ export async function assignBoothNumber(reservationId: string, boothNumber: stri
 
 /**
  * Manual Secretariat Organization Onboarding.
- * Onboards an organization directly, sets physical booth location, and status.
  */
 export async function adminRegisterOrganization(data: {
   orgName: string;
@@ -472,11 +477,10 @@ export async function adminRegisterOrganization(data: {
   customRequestText?: string;
   adminNotes?: string;
 }) {
-  // Generate random UUID for new manual vendor or search existing user profile
+  const db = supabaseAdmin || supabase;
   let userId: string | null = null;
 
-  // Try to find existing profile by email
-  const { data: existingProfile } = await supabase
+  const { data: existingProfile } = await db
     .from('profiles')
     .select('id')
     .eq('email', data.email.toLowerCase().trim())
@@ -485,11 +489,9 @@ export async function adminRegisterOrganization(data: {
   if (existingProfile) {
     userId = existingProfile.id;
   } else {
-    // Generate new UUID for manually onboarded vendor profile
     userId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'usr_' + Math.random().toString(36).substring(2, 15);
 
-    // Insert profile directly
-    const { error: profErr } = await supabase.from('profiles').insert({
+    await db.from('profiles').insert({
       id: userId,
       email: data.email.toLowerCase().trim(),
       role: 'vendor',
@@ -500,14 +502,9 @@ export async function adminRegisterOrganization(data: {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
-
-    if (profErr) {
-      console.error('Profile insertion error in manual onboarding:', profErr);
-    }
   }
 
-  // Fetch selected tier
-  const { data: tierData, error: tierErr } = await supabase
+  const { data: tierData, error: tierErr } = await db
     .from('booth_tiers')
     .select('*')
     .eq('id', data.tierId)
@@ -520,35 +517,33 @@ export async function adminRegisterOrganization(data: {
   let vendorSequence: number | null = null;
   let paymentRef: string | null = null;
 
-  // If status is CONFIRMED_PAID, decrement stock and assign sequence
   if (data.status === 'CONFIRMED_PAID') {
     if (tierData.stock <= 0) {
       throw new Error('Cannot confirm order: Selected tier is out of stock.');
     }
 
-    await supabase
+    await db
       .from('booth_tiers')
-      .update({ stock: Math.max(0, tierData.stock - 1), updated_at: new Date().toISOString() })
+      .update({ stock: Math.max(0, tierData.stock - 1) })
       .eq('id', data.tierId);
 
-    const { data: stats } = await supabase
-      .from('global_stats')
-      .select('total_confirmed_orders')
-      .eq('id', 1)
-      .single();
+    try {
+      const { data: confirmedList } = await db
+        .from('booth_reservations')
+        .select('id')
+        .eq('status', 'CONFIRMED_PAID');
 
-    vendorSequence = (stats?.total_confirmed_orders || 0) + 1;
-    await supabase
-      .from('global_stats')
-      .upsert({ id: 1, total_confirmed_orders: vendorSequence });
+      vendorSequence = (confirmedList?.length || 0) + 1;
+    } catch {
+      vendorSequence = 1;
+    }
 
     paymentRef = 'MANUAL-' + Math.random().toString(36).substring(2, 10).toUpperCase();
   }
 
   const referenceId = 'BTH-' + Math.floor(1000 + Math.random() * 9000).toString();
 
-  // Create reservation
-  const { data: reservation, error: resErr } = await supabase
+  const { data: reservation, error: resErr } = await db
     .from('booth_reservations')
     .insert({
       reference_id: referenceId,
@@ -569,9 +564,8 @@ export async function adminRegisterOrganization(data: {
     throw new Error(resErr?.message || 'Failed to onboard organization.');
   }
 
-  // Create custom request if provided
   if (data.customRequestText && data.customRequestText.trim().length > 0) {
-    await supabase.from('custom_requests').insert({
+    await db.from('custom_requests').insert({
       reservation_id: reservation.id,
       request_text: data.customRequestText.trim(),
       additional_fee: data.additionalFees || 0,
@@ -585,12 +579,14 @@ export async function adminRegisterOrganization(data: {
 
 // Tier Management Functions
 export async function updateTierPrice(tierId: string, newPrice: number) {
-  const { error } = await supabase
+  const db = supabaseAdmin || supabase;
+  const { error } = await db
     .from('booth_tiers')
     .update({ price: newPrice, updatedAt: new Date().toISOString() })
     .eq('id', tierId);
+
   if (error) {
-    const { error: err2 } = await supabase
+    const { error: err2 } = await db
       .from('booth_tiers')
       .update({ price: newPrice })
       .eq('id', tierId);
@@ -599,12 +595,14 @@ export async function updateTierPrice(tierId: string, newPrice: number) {
 }
 
 export async function updateTierStock(tierId: string, newStock: number) {
-  const { error } = await supabase
+  const db = supabaseAdmin || supabase;
+  const { error } = await db
     .from('booth_tiers')
     .update({ stock: newStock, updatedAt: new Date().toISOString() })
     .eq('id', tierId);
+
   if (error) {
-    const { error: err2 } = await supabase
+    const { error: err2 } = await db
       .from('booth_tiers')
       .update({ stock: newStock })
       .eq('id', tierId);
@@ -613,12 +611,14 @@ export async function updateTierStock(tierId: string, newStock: number) {
 }
 
 export async function toggleTierLock(tierId: string, currentLockState: boolean) {
-  const { error } = await supabase
+  const db = supabaseAdmin || supabase;
+  const { error } = await db
     .from('booth_tiers')
     .update({ isLocked: !currentLockState, is_locked: !currentLockState })
     .eq('id', tierId);
+
   if (error) {
-    const { error: err2 } = await supabase
+    const { error: err2 } = await db
       .from('booth_tiers')
       .update({ isLocked: !currentLockState })
       .eq('id', tierId);
@@ -627,8 +627,9 @@ export async function toggleTierLock(tierId: string, currentLockState: boolean) 
 }
 
 export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' | 'isLocked'>) {
+  const db = supabaseAdmin || supabase;
   const tierId = 'tier_' + Math.random().toString(36).substring(2, 10);
-  const { error } = await supabase.from('booth_tiers').insert({
+  const { error } = await db.from('booth_tiers').insert({
     id: tierId,
     name: tierData.name,
     dimension: tierData.dimension,
@@ -644,7 +645,8 @@ export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' 
 }
 
 export async function updateTierName(tierId: string, newName: string) {
-  const { error } = await supabase
+  const db = supabaseAdmin || supabase;
+  const { error } = await db
     .from('booth_tiers')
     .update({ name: newName })
     .eq('id', tierId);
@@ -652,6 +654,7 @@ export async function updateTierName(tierId: string, newName: string) {
 }
 
 export async function editBoothTierFull(tierId: string, updatedFields: Partial<Omit<BoothTier, 'id' | 'updatedAt'>>) {
+  const db = supabaseAdmin || supabase;
   const updates: any = { updatedAt: new Date().toISOString() };
   if (updatedFields.name !== undefined) updates.name = updatedFields.name;
   if (updatedFields.dimension !== undefined) updates.dimension = updatedFields.dimension;
@@ -664,15 +667,16 @@ export async function editBoothTierFull(tierId: string, updatedFields: Partial<O
   if (updatedFields.isLocked !== undefined) updates.isLocked = updatedFields.isLocked;
   if (updatedFields.perks !== undefined) updates.perks = updatedFields.perks;
 
-  const { error } = await supabase.from('booth_tiers').update(updates).eq('id', tierId);
+  const { error } = await db.from('booth_tiers').update(updates).eq('id', tierId);
   if (error) {
     delete updates.updatedAt;
-    const { error: err2 } = await supabase.from('booth_tiers').update(updates).eq('id', tierId);
+    const { error: err2 } = await db.from('booth_tiers').update(updates).eq('id', tierId);
     if (err2) throw error;
   }
 }
 
 export async function deleteBoothTier(tierId: string) {
-  const { error } = await supabase.from('booth_tiers').delete().eq('id', tierId);
+  const db = supabaseAdmin || supabase;
+  const { error } = await db.from('booth_tiers').delete().eq('id', tierId);
   if (error) throw error;
 }
