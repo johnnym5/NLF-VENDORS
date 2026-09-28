@@ -1,21 +1,22 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { BoothTier, BoothOrder } from '@/lib/types';
+import { BoothTier, BoothReservation, ReservationStatus, SECTORS } from '@/lib/types';
 import { getTierColors, formatNaira } from '@/lib/design-tokens';
-import { 
-  useTiers, 
-  useOrders, 
-  assignBoothNumber, 
-  toggleBoothRevocation, 
-  updateTierPrice, 
-  updateTierStock, 
+import {
+  useTiers,
+  useReservations,
+  updateReservationStatus,
+  addCustomSurcharge,
+  assignBoothNumber,
+  updateTierPrice,
+  updateTierStock,
   toggleTierLock,
   addBoothTier,
-  updateTierName,
   editBoothTierFull,
-  deleteBoothTier
-} from '@/lib/firestore';
+  deleteBoothTier,
+} from '@/lib/supabase-queries';
+import { adminCreateVendorAccount } from '@/lib/admin-actions';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -24,28 +25,35 @@ import { Alert } from '@/components/ui/Alert';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import {
-  Settings, 
-  Users, 
-  Lock, 
-  Unlock, 
-  Save, 
-  ShieldOff, 
+  Settings,
+  Users,
+  Lock,
+  Unlock,
+  Save,
+  ShieldOff,
   ShieldCheck,
   Search,
   Plus,
   QrCode,
   Edit,
-  Trash2
+  Trash2,
+  CheckCircle,
+  UserPlus,
+  DollarSign,
+  FileText,
+  MapPin,
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function AdminDashboardPage() {
   const { tiers, loading: tiersLoading } = useTiers();
-  const { orders, loading: ordersLoading } = useOrders();
-  
+  const { reservations, loading: resLoading } = useReservations();
+
   const [localPrices, setLocalPrices] = useState<Record<string, number>>({});
   const [localStocks, setLocalStocks] = useState<Record<string, number>>({});
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [tierFilter, setTierFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -53,7 +61,42 @@ export default function AdminDashboardPage() {
   const [editingBoothId, setEditingBoothId] = useState<string | null>(null);
   const [editingBoothValue, setEditingBoothValue] = useState('');
 
-  // Sync local state when tiers load
+  // Custom Request Modal State
+  const [inspectingReservation, setInspectingReservation] = useState<BoothReservation | null>(null);
+  const [surchargeAmount, setSurchargeAmount] = useState<number>(0);
+  const [surchargeNotes, setSurchargeNotes] = useState<string>('');
+  const [surchargeSubmitting, setSurchargeSubmitting] = useState(false);
+
+  // Manual Onboarding Modal State
+  const [showOnboardModal, setShowOnboardModal] = useState(false);
+  const [onboardData, setOnboardData] = useState({
+    email: '',
+    orgName: '',
+    contactPerson: '',
+    phone: '',
+    sector: SECTORS[0] as string,
+    website: '',
+    businessDescription: '',
+    tierId: '',
+  });
+  const [onboardSubmitting, setOnboardSubmitting] = useState(false);
+  const [onboardResult, setOnboardResult] = useState<any>(null);
+  const [onboardError, setOnboardError] = useState<string | null>(null);
+
+  // Add/Edit Tier Modal State
+  const [showTierModal, setShowTierModal] = useState(false);
+  const [editingTier, setEditingTier] = useState<BoothTier | null>(null);
+  const [tierFormData, setTierFormData] = useState({
+    name: '',
+    dimension: '',
+    colorCode: 'sage' as any,
+    price: 150000,
+    stock: 20,
+    initialStock: 20,
+    perksText: '',
+  });
+
+  // Sync local tier state
   useEffect(() => {
     if (tiers) {
       setLocalPrices(prev => {
@@ -70,21 +113,9 @@ export default function AdminDashboardPage() {
         });
         return next;
       });
-    }
-  }, [tiers]);
-
-  // Fix names instantly if they match the previous scheme
-  useEffect(() => {
-    if (tiers && tiers.length > 0) {
-      tiers.forEach(async (tier) => {
-        if (tier.id === 'tier_standard' && tier.name !== 'Basic Booth') {
-          await updateTierName(tier.id, 'Basic Booth');
-        } else if (tier.id === 'tier_culinary' && tier.name !== 'Standard Booth') {
-          await updateTierName(tier.id, 'Standard Booth');
-        } else if (tier.id === 'tier_corporate' && tier.name !== 'Premium Booth') {
-          await updateTierName(tier.id, 'Premium Booth');
-        }
-      });
+      if (tiers.length > 0 && !onboardData.tierId) {
+        setOnboardData(prev => ({ ...prev, tierId: tiers[0].id }));
+      }
     }
   }, [tiers]);
 
@@ -102,605 +133,652 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleSetStockZero = async (tierId: string) => {
-    setLocalStocks(prev => ({ ...prev, [tierId]: 0 }));
-    await updateTierStock(tierId, 0);
-  };
-
-  const handleSaveBoothNumber = async (orderDocId: string) => {
-    await assignBoothNumber(orderDocId, editingBoothValue);
+  const handleSaveBoothNumber = async (reservationId: string) => {
+    await assignBoothNumber(reservationId, editingBoothValue);
     setEditingBoothId(null);
   };
 
-  // Edit / Delete State Configurations
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [selectedEditTier, setSelectedEditTier] = useState<BoothTier | null>(null);
-  const [editForm, setEditForm] = useState({
-    name: '',
-    dimension: '',
-    price: '',
-    stock: '',
-    initialStock: '',
-    colorCode: 'sage' as 'sage' | 'champagne' | 'slate',
-    perksString: ''
-  });
-  const [editLoading, setEditLoading] = useState(false);
-  const [editError, setEditError] = useState<string | null>(null);
-
-  const handleOpenEditModal = (tier: BoothTier) => {
-    setSelectedEditTier(tier);
-    setEditForm({
-      name: tier.name,
-      dimension: tier.dimension,
-      price: tier.price.toString(),
-      stock: tier.stock.toString(),
-      initialStock: (tier.initialStock ?? tier.stock).toString(),
-      colorCode: tier.colorCode,
-      perksString: tier.perks?.join('\n') || ''
-    });
-    setEditError(null);
-    setIsEditModalOpen(true);
-  };
-
-  const handleUpdateTierFull = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEditTier) return;
-    setEditLoading(true);
-    setEditError(null);
+  const handleStatusChange = async (reservationId: string, newStatus: ReservationStatus) => {
     try {
-      const perks = editForm.perksString
-        .split('\n')
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
-
-      await editBoothTierFull(selectedEditTier.id, {
-        name: editForm.name,
-        dimension: editForm.dimension,
-        price: Number(editForm.price),
-        stock: Number(editForm.stock),
-        initialStock: Number(editForm.initialStock),
-        colorCode: editForm.colorCode,
-        perks
-      });
-      setIsEditModalOpen(false);
+      await updateReservationStatus(reservationId, newStatus);
     } catch (err: any) {
-      setEditError(err.message || 'Failed to update booth tier.');
-    } finally {
-      setEditLoading(false);
+      alert(err.message || 'Failed to update status');
     }
   };
 
-  const handleDeleteTierCheck = async (tierId: string) => {
-    const hasActiveOrders = orders?.some(o => o.tierId === tierId);
-    if (hasActiveOrders) {
-      alert("Cannot delete this booth tier. There are existing active or revoked tickets matching this configuration tier. The ticket registry must remain valid.");
-      return;
-    }
-    if (confirm("Are you sure you want to permanently delete this booth tier from the live configuration registry?")) {
-      try {
-        await deleteBoothTier(tierId);
-      } catch (err: any) {
-        alert(err.message || "Failed to remove tier.");
-      }
-    }
-  };
-
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newTier, setNewTier] = useState({
-    name: '',
-    dimension: '',
-    price: '',
-    stock: '',
-    colorCode: 'sage' as 'sage' | 'champagne' | 'slate',
-    perksString: '',
-  });
-  const [addLoading, setAddLoading] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
-
-  const handleCreateTier = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTier.name || !newTier.dimension || !newTier.price || !newTier.stock) {
-      setAddError('Please fill in all required fields.');
-      return;
-    }
-    setAddLoading(true);
-    setAddError(null);
+  const handleAttachSurcharge = async (requestId?: string) => {
+    if (!inspectingReservation) return;
+    setSurchargeSubmitting(true);
     try {
-      const perks = newTier.perksString
-        .split('\n')
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
+      await addCustomSurcharge(
+        inspectingReservation.id,
+        surchargeAmount,
+        requestId,
+        surchargeNotes
+      );
+      setInspectingReservation(null);
+      setSurchargeAmount(0);
+      setSurchargeNotes('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to attach surcharge');
+    } finally {
+      setSurchargeSubmitting(false);
+    }
+  };
 
-      await addBoothTier({
-        name: newTier.name,
-        dimension: newTier.dimension,
-        price: Number(newTier.price),
-        stock: Number(newTier.stock),
-        initialStock: Number(newTier.stock),
-        colorCode: newTier.colorCode,
+  const handleManualOnboard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setOnboardSubmitting(true);
+    setOnboardError(null);
+    setOnboardResult(null);
+
+    const result = await adminCreateVendorAccount(onboardData);
+    if (result.success) {
+      setOnboardResult(result);
+    } else {
+      setOnboardError(result.error || 'Failed to onboard vendor');
+    }
+    setOnboardSubmitting(false);
+  };
+
+  const handleSaveTierForm = async () => {
+    const perks = tierFormData.perksText
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    if (editingTier) {
+      await editBoothTierFull(editingTier.id, {
+        name: tierFormData.name,
+        dimension: tierFormData.dimension,
+        colorCode: tierFormData.colorCode,
+        price: tierFormData.price,
+        stock: tierFormData.stock,
+        initialStock: tierFormData.initialStock,
         perks,
       });
-
-      setIsAddModalOpen(false);
-      setNewTier({
-        name: '',
-        dimension: '',
-        price: '',
-        stock: '',
-        colorCode: 'sage',
-        perksString: '',
+    } else {
+      await addBoothTier({
+        name: tierFormData.name,
+        dimension: tierFormData.dimension,
+        colorCode: tierFormData.colorCode,
+        price: tierFormData.price,
+        stock: tierFormData.stock,
+        initialStock: tierFormData.initialStock,
+        perks,
       });
-    } catch (err: any) {
-      setAddError(err.message || 'Failed to add new tier.');
-    } finally {
-      setAddLoading(false);
     }
+    setShowTierModal(false);
+    setEditingTier(null);
   };
 
-  const filteredOrders = orders?.filter(order => {
-    const query = searchQuery.toLowerCase();
-    const matchesSearch = (
-      order.orgName.toLowerCase().includes(query) ||
-      order.contactPerson.toLowerCase().includes(query) ||
-      order.id.toLowerCase().includes(query) ||
-      (order.assignedBoothNumber && order.assignedBoothNumber.toLowerCase().includes(query)) ||
-      (order.vendorSequence && order.vendorSequence.toString().includes(query))
-    );
+  // Filter reservations
+  const filteredReservations = reservations.filter((r) => {
+    const matchSearch =
+      r.referenceId.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.profile?.orgName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.profile?.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.assignedBoothNumber?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesTier = tierFilter === 'all' || order.tierId === tierFilter;
-    const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+    const matchTier = tierFilter === 'all' || r.tierId === tierFilter;
+    const matchStatus = statusFilter === 'all' || r.status === statusFilter;
 
-    return matchesSearch && matchesTier && matchesStatus;
-  }) || [];
+    return matchSearch && matchTier && matchStatus;
+  });
+
+  const totalConfirmedRevenue = reservations
+    .filter((r) => r.status === 'CONFIRMED_PAID')
+    .reduce((sum, r) => sum + r.totalAmount, 0);
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8">
-      {/* Tier Configuration Section */}
-      <section className="mb-12">
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="min-h-screen bg-[#FBFBFA] py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto space-y-8">
+
+        {/* Dashboard Title Bar */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-6">
           <div>
-            <h2 className="text-2xl font-heading font-semibold text-slate-900 flex items-center gap-2">
-              <Settings className="w-6 h-6 text-slate-500" />
-              Tier Configuration
-            </h2>
-            <p className="text-slate-600 mt-1">Manage pricing, inventory, and access controls for each booth tier.</p>
+            <span className="text-xs text-slate-500 font-bold uppercase tracking-wider block mb-1">
+              National Livestock Festival 2026 — Secretariat
+            </span>
+            <h1 className="text-2xl font-heading font-bold text-slate-900">
+              Secretariat Allocation Dashboard
+            </h1>
           </div>
-          <div className="flex gap-3">
+
+          <div className="flex flex-wrap items-center gap-3">
             <Link href="/admin/scanner">
-              <Button variant="outline" className="flex items-center gap-2">
-                <QrCode className="w-4 h-4" /> Open Scanner
+              <Button variant="outline" size="sm" className="flex items-center gap-1.5">
+                <QrCode className="w-4 h-4" /> Scanner Portal
               </Button>
             </Link>
-            <Button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 bg-[#1E4D38] hover:bg-[#163a2a]">
-              <Plus className="w-4 h-4" /> Add New Tier
+            <Button
+              size="sm"
+              className="bg-[#1E4D38] hover:bg-[#153627] text-white flex items-center gap-1.5"
+              onClick={() => {
+                setOnboardResult(null);
+                setOnboardError(null);
+                setShowOnboardModal(true);
+              }}
+            >
+              <UserPlus className="w-4 h-4" /> Manual Onboard Vendor
             </Button>
           </div>
         </div>
 
-        {tiersLoading ? (
-          <div className="py-12 text-center text-slate-500">Loading tiers...</div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {tiers?.map((tier, index) => {
-              const colors = getTierColors(tier.colorCode);
-              return (
-                <FadeIn key={tier.id} delay={index * 150} className={`bg-white rounded-xl border p-6 shadow-sm ${colors.borderColor}`}>
-                  <div className="flex justify-between items-start mb-6">
-                    <div>
-                      <h3 className="font-heading font-semibold text-lg text-slate-900">{tier.name}</h3>
-                      <p className="text-xs font-mono text-slate-400 mt-0.5">{tier.dimension}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => handleOpenEditModal(tier)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-slate-50 transition-colors"
-                        title="Edit Details"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteTierCheck(tier.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-slate-50 transition-colors"
-                        title="Delete Tier"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                      <Badge variant={tier.colorCode} className={`${colors.badgeBg} ${colors.badgeText} ml-1`}>{tier.colorCode}</Badge>
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    {/* Price Field */}
-                    <div className="pb-4 border-b border-slate-100">
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Price (NGN)</label>
-                      <div className="flex gap-2">
-                        <Input 
-                          type="number"
-                          value={localPrices[tier.id] ?? tier.price}
-                          onChange={(e) => setLocalPrices(prev => ({ ...prev, [tier.id]: Number(e.target.value) }))}
-                          className={`flex-1 ${colors.borderColor}`}
-                        />
-                        <Button onClick={() => handlePriceUpdate(tier.id)} variant="outline">
-                          Update Price
-                        </Button>
-                      </div>
-                    </div>
-
-                    {/* Stock Field */}
-                    <div className="pb-4 border-b border-slate-100">
-                      <label className="block text-sm font-medium text-slate-700 mb-2">Available Stock</label>
-                      <div className="flex gap-2 mb-2">
-                        <Input 
-                          type="number"
-                          value={localStocks[tier.id] ?? tier.stock}
-                          onChange={(e) => setLocalStocks(prev => ({ ...prev, [tier.id]: Number(e.target.value) }))}
-                          className={`flex-1 ${colors.borderColor}`}
-                        />
-                        <Button onClick={() => handleStockUpdate(tier.id)} variant="outline">
-                          Update Stock
-                        </Button>
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-slate-500">/ {tier.initialStock} initial</span>
-                        <button 
-                          onClick={() => handleSetStockZero(tier.id)}
-                          className="text-red-600 hover:text-red-700 font-medium"
-                        >
-                          Set to 0
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Lock Toggle */}
-                    <div>
-                      {tier.isLocked ? (
-                        <div className="flex items-center justify-between bg-red-50 p-4 rounded-lg border border-red-100">
-                          <div className="flex items-center gap-2 text-red-700">
-                            <Lock className="w-4 h-4" />
-                            <span className="font-medium text-sm">Locked</span>
-                          </div>
-                          <Button size="sm" variant="outline" onClick={() => toggleTierLock(tier.id, true)}>
-                            Unlock Tier
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between bg-green-50 p-4 rounded-lg border border-green-100">
-                          <div className="flex items-center gap-2 text-green-700">
-                            <Unlock className="w-4 h-4" />
-                            <span className="font-medium text-sm">Open</span>
-                          </div>
-                          <Button size="sm" variant="outline" onClick={() => toggleTierLock(tier.id, false)}>
-                            Lock Tier
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </FadeIn>
-              );
-            })}
+        {/* Overview Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-xl border border-slate-200/70 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Confirmed Revenue</span>
+            <span className="text-2xl font-bold text-slate-900">{formatNaira(totalConfirmedRevenue)}</span>
           </div>
-        )}
-      </section>
-
-      {/* Order Directory Section */}
-      <section>
-        <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-heading font-semibold text-slate-900 flex items-center gap-2">
-              <Users className="w-6 h-6 text-slate-500" />
-              Order Directory
-            </h2>
-            <p className="text-slate-600 mt-1">View all booth orders, assign physical locations, and manage access.</p>
+          <div className="bg-white p-5 rounded-xl border border-slate-200/70 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Total Applications</span>
+            <span className="text-2xl font-bold text-slate-900">{reservations.length}</span>
           </div>
-          <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-            <div className="flex gap-2">
-              <Select
-                value={tierFilter}
-                onChange={(val) => setTierFilter(val)}
-                options={[
-                  { value: 'all', label: 'All Tiers' },
-                  ...(tiers?.map(t => ({ value: t.id, label: t.name })) || [])
-                ]}
-                className="w-40"
-              />
-              <Select
-                value={statusFilter}
-                onChange={(val) => setStatusFilter(val)}
-                options={[
-                  { value: 'all', label: 'All Status' },
-                  { value: 'ACTIVE', label: 'Active' },
-                  { value: 'REVOKED', label: 'Revoked' }
-                ]}
-                className="w-32"
-              />
-            </div>
-            <div className="relative w-full md:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
-              <Input
-                placeholder="Search orders..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200/70 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Pending Approval</span>
+            <span className="text-2xl font-bold text-amber-600">
+              {reservations.filter((r) => r.status === 'RESERVED_PENDING_APPROVAL').length}
+            </span>
+          </div>
+          <div className="bg-white p-5 rounded-xl border border-slate-200/70 shadow-sm">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">Allocated & Paid</span>
+            <span className="text-2xl font-bold text-emerald-600">
+              {reservations.filter((r) => r.status === 'CONFIRMED_PAID').length}
+            </span>
           </div>
         </div>
 
-        {ordersLoading ? (
-          <div className="py-12 text-center text-slate-500">Loading orders...</div>
-        ) : filteredOrders.length === 0 ? (
-          <div className="py-16 text-center bg-white rounded-xl border border-slate-200">
-            <p className="text-slate-500">
-              {searchQuery ? 'No orders match your search criteria.' : 'No orders have been placed yet.'}
-            </p>
+        {/* TIER MANAGEMENT SECTION */}
+        <div className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-6">
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5 text-slate-600" />
+              <h2 className="text-lg font-heading font-bold text-slate-900">Exhibition Tiers & Quota Controls</h2>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditingTier(null);
+                setTierFormData({
+                  name: '',
+                  dimension: '',
+                  colorCode: 'sage',
+                  price: 150000,
+                  stock: 20,
+                  initialStock: 20,
+                  perksText: '',
+                });
+                setShowTierModal(true);
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" /> Add New Tier
+            </Button>
           </div>
-        ) : (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[800px]">
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {tiers.map((tier) => {
+              const color = getTierColors(tier.colorCode);
+              return (
+                <div
+                  key={tier.id}
+                  className={`rounded-xl border p-5 space-y-4 ${color.cardBg} ${color.borderColor}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h3 className={`font-heading font-bold text-base ${color.headingText}`}>
+                        {tier.name}
+                      </h3>
+                      <p className="text-xs text-slate-500">{tier.dimension}</p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleTierLock(tier.id, tier.isLocked)}
+                      className="p-1.5 h-auto text-slate-600 hover:text-slate-900"
+                    >
+                      {tier.isLocked ? <Lock className="w-4 h-4 text-red-600" /> : <Unlock className="w-4 h-4 text-green-600" />}
+                    </Button>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500 block mb-1">Unit Price (₦)</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={localPrices[tier.id] ?? tier.price}
+                          onChange={(e) => setLocalPrices((prev) => ({ ...prev, [tier.id]: Number(e.target.value) }))}
+                          className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded bg-white font-mono"
+                        />
+                        <Button size="sm" onClick={() => handlePriceUpdate(tier.id)} className="px-2.5">
+                          <Save className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-500 block mb-1">Remaining Quota Stock</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={localStocks[tier.id] ?? tier.stock}
+                          onChange={(e) => setLocalStocks((prev) => ({ ...prev, [tier.id]: Number(e.target.value) }))}
+                          className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded bg-white font-mono"
+                        />
+                        <Button size="sm" onClick={() => handleStockUpdate(tier.id)} className="px-2.5">
+                          <Save className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-3 border-t border-slate-200/60 text-xs">
+                    <span className="text-slate-500">Status: <strong>{tier.isLocked ? 'Locked' : 'Open'}</strong></span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingTier(tier);
+                          setTierFormData({
+                            name: tier.name,
+                            dimension: tier.dimension,
+                            colorCode: tier.colorCode,
+                            price: tier.price,
+                            stock: tier.stock,
+                            initialStock: tier.initialStock,
+                            perksText: tier.perks.join('\n'),
+                          });
+                          setShowTierModal(true);
+                        }}
+                        className="text-slate-600 hover:text-slate-900 font-medium"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm('Delete tier?')) deleteBoothTier(tier.id);
+                        }}
+                        className="text-red-600 hover:text-red-800 font-medium"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RESERVATIONS MANAGEMENT DIRECTORY */}
+        <div className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-slate-600" />
+              <h2 className="text-lg font-heading font-bold text-slate-900">
+                Vendor Applications & Allocation Directory ({filteredReservations.length})
+              </h2>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search ref, org, email, booth..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+                />
+              </div>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+              >
+                <option value="all">All Statuses</option>
+                <option value="RESERVED_PENDING_APPROVAL">Pending Approval</option>
+                <option value="APPROVED_PENDING_PAYMENT">Approved (Pending Payment)</option>
+                <option value="CONFIRMED_PAID">Confirmed & Paid</option>
+                <option value="REVOKED">Revoked</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Directory Table */}
+          <div className="overflow-x-auto border border-slate-200/80 rounded-lg">
+            <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-[#F6F7F6] text-xs font-medium text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                  <th className="px-6 py-4">Vendor #</th>
-                  <th className="px-6 py-4">Order Reference</th>
-                  <th className="px-6 py-4">Organization</th>
-                  <th className="px-6 py-4">Tier & Amount</th>
-                  <th className="px-6 py-4">Booth Number</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
+                  <th className="p-3">Reference / Org</th>
+                  <th className="p-3">Tier Space</th>
+                  <th className="p-3">Rate + Surcharges</th>
+                  <th className="p-3">Physical Booth #</th>
+                  <th className="p-3">Status</th>
+                  <th className="p-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredOrders.map((order, index) => (
-                  <FadeIn as="tr" key={order.docId} delay={index * 50} className="hover:bg-slate-50/50 transition-colors duration-200">
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-900">#{order.vendorSequence || 'N/A'}</div>
+              <tbody className="divide-y divide-slate-200">
+                {filteredReservations.map((res) => (
+                  <tr key={res.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="p-3">
+                      <span className="font-mono font-bold text-slate-900 block">{res.referenceId}</span>
+                      <span className="font-semibold text-slate-800 block">{res.profile?.orgName || 'N/A'}</span>
+                      <span className="text-slate-400 block">{res.profile?.email} ({res.profile?.phone})</span>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="font-mono text-sm text-slate-900">{order.id}</div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        {new Date(order.purchasedAt).toLocaleDateString()}
-                      </div>
+                    <td className="p-3">
+                      <span className="font-medium text-slate-800 block">{res.tierName}</span>
+                      <span className="text-slate-500 text-[11px]">{res.profile?.sector}</span>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="font-medium text-slate-900">{order.orgName}</div>
-                      <div className="text-sm text-slate-500">{order.contactPerson} • {order.phone}</div>
-                      <div className="flex flex-wrap gap-2 mt-2 items-center">
-                        <Badge variant="neutral" className="bg-slate-100 text-slate-600">{order.sector}</Badge>
-                        {order.website && (
-                          <span className="text-xs font-mono text-slate-500 bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">
-                            {order.website}
-                          </span>
-                        )}
-                      </div>
-                      {order.businessDescription && (
-                        <p className="text-xs text-slate-500 italic mt-1.5 max-w-xs line-clamp-2" title={order.businessDescription}>
-                          &ldquo;{order.businessDescription}&rdquo;
-                        </p>
+                    <td className="p-3">
+                      <span className="font-bold text-slate-900 block">{formatNaira(res.totalAmount)}</span>
+                      {res.additionalFees > 0 && (
+                        <span className="text-amber-700 text-[10px] font-semibold block">
+                          Includes {formatNaira(res.additionalFees)} Fee
+                        </span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-slate-900">{order.tierName}</div>
-                      <div className="text-sm text-slate-500">{formatNaira(order.pricePaid)}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {editingBoothId === order.docId ? (
-                        <div className="flex items-center gap-2">
-                          <Input 
+                    <td className="p-3">
+                      {editingBoothId === res.id ? (
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
                             value={editingBoothValue}
                             onChange={(e) => setEditingBoothValue(e.target.value)}
-                            className="w-24 text-sm"
-                            placeholder="e.g. A12"
-                            autoFocus
+                            className="px-2 py-1 border border-slate-300 rounded text-xs w-24 font-mono"
                           />
-                          <Button size="sm" onClick={() => handleSaveBoothNumber(order.docId)}>
-                            <Save className="w-4 h-4" />
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setEditingBoothId(null)}>
-                            Cancel
+                          <Button size="sm" onClick={() => handleSaveBoothNumber(res.id)} className="px-2 py-1 h-auto text-[11px]">
+                            Save
                           </Button>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-medium text-slate-900">
-                            {order.assignedBoothNumber || 'Unassigned'}
-                          </span>
-                          <button 
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono font-bold text-slate-800">{res.assignedBoothNumber}</span>
+                          <button
                             onClick={() => {
-                              setEditingBoothId(order.docId);
-                              setEditingBoothValue(order.assignedBoothNumber || '');
+                              setEditingBoothId(res.id);
+                              setEditingBoothValue(res.assignedBoothNumber);
                             }}
-                            className="text-sm text-blue-600 hover:text-blue-800"
+                            className="text-slate-400 hover:text-slate-700 p-0.5"
                           >
-                            {order.assignedBoothNumber ? 'Edit' : 'Assign'}
+                            <Edit className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       )}
                     </td>
-                    <td className="px-6 py-4">
-                      {order.status === 'ACTIVE' ? (
-                        <Badge variant="active" className="bg-[#DCFCE7] text-[#166534] border border-[#86EFAC]">Active</Badge>
-                      ) : (
-                        <Badge variant="revoked" className="bg-[#FEE2E2] text-[#991B1B] border border-[#FCA5A5]">Revoked</Badge>
-                      )}
+                    <td className="p-3">
+                      <select
+                        value={res.status}
+                        onChange={(e) => handleStatusChange(res.id, e.target.value as ReservationStatus)}
+                        className={`px-2 py-1 rounded text-[11px] font-semibold border ${
+                          res.status === 'CONFIRMED_PAID'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                            : res.status === 'APPROVED_PENDING_PAYMENT'
+                            ? 'bg-blue-50 text-blue-800 border-blue-300'
+                            : res.status === 'RESERVED_PENDING_APPROVAL'
+                            ? 'bg-amber-50 text-amber-800 border-amber-300'
+                            : 'bg-rose-50 text-rose-800 border-rose-300'
+                        }`}
+                      >
+                        <option value="RESERVED_PENDING_APPROVAL">Pending Approval</option>
+                        <option value="APPROVED_PENDING_PAYMENT">Approved (Awaiting Payment)</option>
+                        <option value="CONFIRMED_PAID">Confirmed & Paid</option>
+                        <option value="REVOKED">Revoked</option>
+                      </select>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      {order.status === 'ACTIVE' ? (
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => toggleBoothRevocation(order.docId, order.status)}
-                        >
-                          <ShieldOff className="w-4 h-4 mr-1.5" />
-                          Revoke Access
-                        </Button>
-                      ) : (
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="text-green-600 border-green-200 hover:bg-green-50"
-                          onClick={() => toggleBoothRevocation(order.docId, order.status)}
-                        >
-                          <ShieldCheck className="w-4 h-4 mr-1.5" />
-                          Reinstate Access
-                        </Button>
-                      )}
+                    <td className="p-3 text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setInspectingReservation(res);
+                          setSurchargeAmount(0);
+                          setSurchargeNotes('');
+                        }}
+                        className="text-xs px-2.5 py-1 h-auto"
+                      >
+                        Inspect / Fee {res.customRequests && res.customRequests.length > 0 && `(${res.customRequests.length})`}
+                      </Button>
                     </td>
-                  </FadeIn>
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+
+      </div>
+
+      {/* INSPECT & CUSTOM SURCHARGE MODAL */}
+      <Modal
+        isOpen={!!inspectingReservation}
+        onClose={() => setInspectingReservation(null)}
+        title={`Inspect Reservation — ${inspectingReservation?.referenceId}`}
+        size="lg"
+      >
+        {inspectingReservation && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-lg border border-slate-100">
+              <div>
+                <span className="block text-slate-400 mb-0.5">Organization</span>
+                <span className="font-bold text-slate-900">{inspectingReservation.profile?.orgName}</span>
+              </div>
+              <div>
+                <span className="block text-slate-400 mb-0.5">Contact Person</span>
+                <span className="font-medium text-slate-800">{inspectingReservation.profile?.contactPerson} ({inspectingReservation.profile?.phone})</span>
+              </div>
+              <div>
+                <span className="block text-slate-400 mb-0.5">Space Rate</span>
+                <span className="font-bold text-slate-900">{formatNaira(inspectingReservation.basePrice)}</span>
+              </div>
+              <div>
+                <span className="block text-slate-400 mb-0.5">Current Additional Surcharges</span>
+                <span className="font-bold text-slate-900">{formatNaira(inspectingReservation.additionalFees)}</span>
+              </div>
+            </div>
+
+            {/* Custom Requests List */}
+            <div>
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Vendor Custom Requests</h4>
+              {inspectingReservation.customRequests && inspectingReservation.customRequests.length > 0 ? (
+                <div className="space-y-3">
+                  {inspectingReservation.customRequests.map((req) => (
+                    <div key={req.id} className="border border-slate-200 rounded-lg p-3 bg-white text-xs space-y-2">
+                      <p className="font-medium text-slate-800">&ldquo;{req.requestText}&rdquo;</p>
+                      <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+                        <Input
+                          type="number"
+                          placeholder="Attach Surcharge (₦)"
+                          value={surchargeAmount}
+                          onChange={(e) => setSurchargeAmount(Number(e.target.value))}
+                          className="text-xs py-1"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => handleAttachSurcharge(req.id)}
+                          disabled={surchargeSubmitting}
+                          className="bg-[#1E4D38] text-white"
+                        >
+                          Attach Fee & Approve Request
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic">No custom requests submitted for this reservation.</p>
+              )}
+            </div>
+
+            {/* Direct Surcharge Modifier */}
+            <div className="border-t border-slate-200 pt-4 space-y-3">
+              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Attach General Secretariat Surcharge</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Surcharge Amount (₦)"
+                  type="number"
+                  value={surchargeAmount}
+                  onChange={(e) => setSurchargeAmount(Number(e.target.value))}
+                />
+                <Input
+                  label="Admin Notes / Itemization"
+                  placeholder="e.g. 30A power hookup + cold storage extension"
+                  value={surchargeNotes}
+                  onChange={(e) => setSurchargeNotes(e.target.value)}
+                />
+              </div>
+              <Button
+                onClick={() => handleAttachSurcharge()}
+                disabled={surchargeSubmitting || surchargeAmount <= 0}
+                className="w-full bg-slate-900 text-white text-xs"
+              >
+                Attach Surcharge to Total Due ({formatNaira(surchargeAmount)})
+              </Button>
+            </div>
+          </div>
         )}
-      </section>
-
-      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="Create New Booth Tier">
-        <form onSubmit={handleCreateTier} className="space-y-4">
-          {addError && <Alert variant="error">{addError}</Alert>}
-
-          <Input
-            label="Tier Name"
-            placeholder="e.g. Standard Meat and Agro Stall"
-            value={newTier.name}
-            onChange={(e) => setNewTier(prev => ({ ...prev, name: e.target.value }))}
-            required
-          />
-
-          <Input
-            label="Dimension"
-            placeholder="e.g. 3m x 3m Demarcated Stall"
-            value={newTier.dimension}
-            onChange={(e) => setNewTier(prev => ({ ...prev, dimension: e.target.value }))}
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Price (NGN)"
-              type="number"
-              placeholder="e.g. 150000"
-              value={newTier.price}
-              onChange={(e) => setNewTier(prev => ({ ...prev, price: e.target.value }))}
-              required
-            />
-            <Input
-              label="Available Stock"
-              type="number"
-              placeholder="e.g. 20"
-              value={newTier.stock}
-              onChange={(e) => setNewTier(prev => ({ ...prev, stock: e.target.value }))}
-              required
-            />
-          </div>
-
-          <Select
-            label="Theme Color Palette"
-            value={newTier.colorCode}
-            onChange={(val) => setNewTier(prev => ({ ...prev, colorCode: val as any }))}
-            options={[
-              { value: 'sage', label: 'Sage Green (Standard / Agro)' },
-              { value: 'champagne', label: 'Champagne Gold (Premium / Culinary)' },
-              { value: 'slate', label: 'Slate Gray (Corporate / Machinery)' },
-            ]}
-          />
-
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-1.5 block">
-              Inclusions & Perks (One per line)
-            </label>
-            <textarea
-              className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-300 focus:outline-none focus:ring-2 focus:border-[#B8D8C5] focus:ring-[#B8D8C5]/20 min-h-[100px]"
-              placeholder="Demarcated floor space&#10;Shared cold storage&#10;2 exhibitor badges"
-              value={newTier.perksString}
-              onChange={(e) => setNewTier(prev => ({ ...prev, perksString: e.target.value }))}
-            />
-          </div>
-
-          <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-            <Button type="button" variant="outline" onClick={() => setIsAddModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={addLoading}>
-              {addLoading ? 'Creating...' : 'Create Tier'}
-            </Button>
-          </div>
-        </form>
       </Modal>
 
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Modify Booth Tier Details">
-        <form onSubmit={handleUpdateTierFull} className="space-y-4">
-          {editError && <Alert variant="error">{editError}</Alert>}
+      {/* MANUAL VENDOR ONBOARDING MODAL */}
+      <Modal
+        isOpen={showOnboardModal}
+        onClose={() => setShowOnboardModal(false)}
+        title="Secretariat Manual Vendor Onboarding"
+        size="md"
+      >
+        {onboardResult ? (
+          <div className="text-center py-6 space-y-4">
+            <CheckCircle className="w-12 h-12 text-green-600 mx-auto" />
+            <h3 className="text-lg font-bold text-slate-900">Vendor Account Created & Space Allocated!</h3>
+            <div className="bg-slate-50 p-4 rounded-lg text-left text-xs space-y-2 border border-slate-200">
+              <p><strong>Email:</strong> {onboardData.email}</p>
+              {onboardResult.tempPassword && (
+                <p><strong>Temporary Password:</strong> <code className="bg-slate-200 px-1 py-0.5 rounded font-mono text-slate-900 font-bold">{onboardResult.tempPassword}</code></p>
+              )}
+              <p><strong>Reservation Ref:</strong> {onboardResult.referenceId}</p>
+            </div>
+            <Button onClick={() => setShowOnboardModal(false)} className="w-full">
+              Done
+            </Button>
+          </div>
+        ) : (
+          <form onSubmit={handleManualOnboard} className="space-y-4 text-xs">
+            {onboardError && <Alert variant="error">{onboardError}</Alert>}
 
-          <Input
-            label="Tier Name"
-            value={editForm.name}
-            onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
-            required
-          />
-
-          <Input
-            label="Dimension"
-            value={editForm.dimension}
-            onChange={(e) => setEditForm(prev => ({ ...prev, dimension: e.target.value }))}
-            required
-          />
-
-          <div className="grid grid-cols-3 gap-4">
             <Input
-              label="Price (NGN)"
-              type="number"
-              value={editForm.price}
-              onChange={(e) => setEditForm(prev => ({ ...prev, price: e.target.value }))}
+              label="Vendor Email *"
+              type="email"
+              value={onboardData.email}
+              onChange={(e) => setOnboardData((prev) => ({ ...prev, email: e.target.value }))}
               required
             />
             <Input
-              label="Current Stock"
-              type="number"
-              value={editForm.stock}
-              onChange={(e) => setEditForm(prev => ({ ...prev, stock: e.target.value }))}
+              label="Organization Name *"
+              value={onboardData.orgName}
+              onChange={(e) => setOnboardData((prev) => ({ ...prev, orgName: e.target.value }))}
               required
             />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Contact Person *"
+                value={onboardData.contactPerson}
+                onChange={(e) => setOnboardData((prev) => ({ ...prev, contactPerson: e.target.value }))}
+                required
+              />
+              <Input
+                label="Phone Number *"
+                value={onboardData.phone}
+                onChange={(e) => setOnboardData((prev) => ({ ...prev, phone: e.target.value }))}
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">Industry Sector *</label>
+              <select
+                value={onboardData.sector}
+                onChange={(e) => setOnboardData((prev) => ({ ...prev, sector: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded text-xs bg-white"
+              >
+                {SECTORS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">Exhibition Space Tier *</label>
+              <select
+                value={onboardData.tierId}
+                onChange={(e) => setOnboardData((prev) => ({ ...prev, tierId: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded text-xs bg-white"
+              >
+                {tiers.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} ({formatNaira(t.price)})</option>
+                ))}
+              </select>
+            </div>
+
+            <Button type="submit" disabled={onboardSubmitting} className="w-full bg-[#1E4D38] text-white">
+              {onboardSubmitting ? 'Onboarding Vendor...' : 'Onboard & Mark Confirmed Paid'}
+            </Button>
+          </form>
+        )}
+      </Modal>
+
+      {/* ADD/EDIT TIER MODAL */}
+      <Modal
+        isOpen={showTierModal}
+        onClose={() => setShowTierModal(false)}
+        title={editingTier ? 'Edit Exhibition Tier' : 'Add New Exhibition Tier'}
+        size="md"
+      >
+        <div className="space-y-4 text-xs">
+          <Input
+            label="Tier Name *"
+            value={tierFormData.name}
+            onChange={(e) => setTierFormData((prev) => ({ ...prev, name: e.target.value }))}
+          />
+          <Input
+            label="Dimension Details *"
+            value={tierFormData.dimension}
+            onChange={(e) => setTierFormData((prev) => ({ ...prev, dimension: e.target.value }))}
+          />
+          <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Initial Quota"
+              label="Price (₦) *"
               type="number"
-              value={editForm.initialStock}
-              onChange={(e) => setEditForm(prev => ({ ...prev, initialStock: e.target.value }))}
-              required
+              value={tierFormData.price}
+              onChange={(e) => setTierFormData((prev) => ({ ...prev, price: Number(e.target.value) }))}
+            />
+            <Input
+              label="Quota Stock *"
+              type="number"
+              value={tierFormData.stock}
+              onChange={(e) => setTierFormData((prev) => ({ ...prev, stock: Number(e.target.value) }))}
             />
           </div>
-
-          <Select
-            label="Theme Color Palette"
-            value={editForm.colorCode}
-            onChange={(val) => setEditForm(prev => ({ ...prev, colorCode: val as any }))}
-            options={[
-              { value: 'sage', label: 'Sage Green (Standard / Agro)' },
-              { value: 'champagne', label: 'Champagne Gold (Premium / Culinary)' },
-              { value: 'slate', label: 'Slate Gray (Corporate / Machinery)' },
-            ]}
-          />
 
           <div>
-            <label className="text-sm font-medium text-slate-700 mb-1.5 block">
-              Inclusions & Perks (One per line)
-            </label>
+            <label className="block text-[11px] font-bold text-slate-700 mb-1">Perks List (One per line)</label>
             <textarea
-              className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-300 focus:outline-none focus:ring-2 focus:border-[#B8D8C5] focus:ring-[#B8D8C5]/20 min-h-[100px]"
-              value={editForm.perksString}
-              onChange={(e) => setEditForm(prev => ({ ...prev, perksString: e.target.value }))}
+              rows={4}
+              value={tierFormData.perksText}
+              onChange={(e) => setTierFormData((prev) => ({ ...prev, perksText: e.target.value }))}
+              className="w-full px-3 py-2 border border-slate-300 rounded text-xs"
             />
           </div>
 
-          <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-            <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={editLoading}>
-              {editLoading ? 'Saving Changes...' : 'Save Configuration'}
-            </Button>
-          </div>
-        </form>
+          <Button onClick={handleSaveTierForm} className="w-full bg-slate-900 text-white">
+            Save Tier
+          </Button>
+        </div>
       </Modal>
+
     </div>
   );
 }

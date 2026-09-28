@@ -1,5 +1,30 @@
 export type TierColorCode = 'sage' | 'champagne' | 'slate';
 
+export type UserRole = 'vendor' | 'admin';
+
+export type ReservationStatus =
+  | 'CART'
+  | 'RESERVED_PENDING_APPROVAL'
+  | 'APPROVED_PENDING_PAYMENT'
+  | 'CONFIRMED_PAID'
+  | 'REVOKED';
+
+export type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: UserRole;
+  orgName?: string;
+  contactPerson?: string;
+  phone?: string;
+  sector?: string;
+  website?: string;
+  businessDescription?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface BoothTier {
   id: string;
   name: string;
@@ -13,28 +38,37 @@ export interface BoothTier {
   updatedAt: string;
 }
 
-export interface BoothOrder {
+export interface CustomRequest {
   id: string;
-  docId: string;
+  reservationId: string;
+  requestText: string;
+  additionalFee: number;
+  status: RequestStatus;
+  adminNotes?: string;
+  createdAt: string;
+}
+
+export interface BoothReservation {
+  id: string;
+  referenceId: string;
   userId: string;
-  orgName: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  sector: string;
-  website?: string;
-  businessDescription?: string;
   tierId: string;
   tierName: string;
-  pricePaid: number;
+  basePrice: number;
+  additionalFees: number;
+  totalAmount: number;
+  status: ReservationStatus;
   assignedBoothNumber: string;
-  vendorSequence: number;
-  status: 'ACTIVE' | 'REVOKED';
-  paymentReference: string;
-  purchasedAt: string;
-  revokedAt?: string;
-  revocationReason?: string;
+  vendorSequence?: number;
+  paymentReference?: string;
+  createdAt: string;
+  updatedAt: string;
+  profile?: UserProfile;
+  customRequests?: CustomRequest[];
 }
+
+// Alias for backward compatibility if needed
+export type BoothOrder = BoothReservation;
 
 export const SECTORS = [
   'Fresh Meat and Loins',

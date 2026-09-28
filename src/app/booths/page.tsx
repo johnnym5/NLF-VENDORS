@@ -2,8 +2,8 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle } from 'lucide-react';
-import { useTiers } from '@/lib/firestore';
+import { CheckCircle, ShieldCheck } from 'lucide-react';
+import { useTiers } from '@/lib/supabase-queries';
 import { getTierColors, formatNaira } from '@/lib/design-tokens';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Badge } from '@/components/ui/Badge';
@@ -23,14 +23,14 @@ export default function BoothsPage() {
     <div className="min-h-screen bg-[#FBFBFA] py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <p className="text-sm text-slate-500 uppercase tracking-wider mb-2">
-            National Livestock Festival 2026
+          <p className="text-sm text-slate-500 uppercase tracking-wider mb-2 font-medium">
+            National Livestock Festival 2026 — Secretariat Portal
           </p>
-          <h1 className="text-3xl font-heading font-bold text-slate-900 mb-4">
+          <h1 className="text-3xl sm:text-4xl font-heading font-bold text-slate-900 mb-4">
             Commercial Exhibition Booths
           </h1>
-          <p className="text-slate-600 max-w-2xl mx-auto">
-            Secure your presence at the premier livestock exhibition. Choose a booth tier that fits your organization&apos;s needs.
+          <p className="text-slate-600 max-w-2xl mx-auto text-base">
+            Reserve your space at Nigeria&apos;s premier livestock exhibition. Select a booth tier to submit a space reservation and custom requests to the Secretariat.
           </p>
         </div>
 
@@ -56,7 +56,6 @@ export default function BoothsPage() {
               const isOutOfStock = tier.stock === 0;
               const isDisabled = isOutOfStock || tier.isLocked;
 
-              // We manually construct the border-l class or inject a style because colors.borderColor is a border utility class
               const borderColorMatch = colors.borderColor.match(/border-\[(#[0-9a-fA-F]+)\]/);
               const inlineBorderColor = borderColorMatch ? borderColorMatch[1] : undefined;
 
@@ -66,7 +65,7 @@ export default function BoothsPage() {
                     className={`bg-white rounded-xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow duration-500 p-6 flex flex-col h-full ${
                       tier.isLocked ? 'opacity-75' : ''
                     }`}
-                    style={{ borderLeftWidth: '3px', borderLeftColor: inlineBorderColor }}
+                    style={{ borderLeftWidth: '4px', borderLeftColor: inlineBorderColor }}
                   >
                     <div className="mb-4">
                       <Badge variant={tier.colorCode} className="mb-2">
@@ -87,8 +86,8 @@ export default function BoothsPage() {
                         {tier.perks.map((perk, i) => (
                           <li key={i} className="flex items-start">
                             <CheckCircle
-                              className={`w-4 h-4 mt-0.5 mr-2 flex-shrink-0 ${colors.headingText.replace('text-', 'text-')}`}
-                              style={inlineBorderColor ? { color: inlineBorderColor } : {}}
+                              className="w-4 h-4 mt-0.5 mr-2 flex-shrink-0"
+                              style={inlineBorderColor ? { color: inlineBorderColor } : { color: '#1E4D38' }}
                             />
                             <span className="text-sm text-slate-600">{perk}</span>
                           </li>
@@ -97,18 +96,22 @@ export default function BoothsPage() {
                     </div>
 
                     <div className="mt-6 pt-6 border-t border-slate-100">
-                      <div className="mb-4">
+                      <div className="mb-2">
                         <span
-                          className="text-4xl font-heading font-black tracking-tight"
-                          style={
-                            tier.colorCode === 'sage'
-                              ? { color: '#133325' }
-                              : tier.colorCode === 'champagne'
-                              ? { color: '#6A5013' }
-                              : { color: '#111827' }
-                          }
+                          className="text-3xl font-heading font-black tracking-tight"
+                          style={{
+                            color:
+                              tier.colorCode === 'sage'
+                                ? '#133325'
+                                : tier.colorCode === 'champagne'
+                                ? '#6A5013'
+                                : '#111827',
+                          }}
                         >
                           {formatNaira(tier.price)}
+                        </span>
+                        <span className="text-xs text-slate-400 block font-normal mt-0.5">
+                          Base Space Rate
                         </span>
                       </div>
 
@@ -119,23 +122,23 @@ export default function BoothsPage() {
                       </div>
 
                       {tier.isLocked && (
-                        <Alert variant="error" className="mb-4 text-sm">
-                          Tier Locked by Administration. New reservations are paused. Existing allocations remain active.
+                        <Alert variant="error" className="mb-4 text-xs">
+                          Tier Locked by Administration. New reservations are paused.
                         </Alert>
                       )}
 
                       {!tier.isLocked && isOutOfStock && (
-                        <Alert variant="warning" className="mb-4 text-sm">
-                          Out of stock. Please select another booth tier or reach out to the Secretariat team.
+                        <Alert variant="warning" className="mb-4 text-xs">
+                          Out of stock. Contact Secretariat for custom allocation.
                         </Alert>
                       )}
 
                       <Button
                         onClick={() => handleBook(tier.id)}
                         disabled={isDisabled}
-                        className="w-full"
+                        className="w-full bg-[#1E4D38] hover:bg-[#153627] text-white"
                       >
-                        Reserve and Book Booth
+                        Reserve & Save Space
                       </Button>
                     </div>
                   </div>

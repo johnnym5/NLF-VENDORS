@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
+import { UserProfile } from '@/lib/types';
 
 export interface AppUser {
   id: string;
@@ -9,6 +10,8 @@ export interface AppUser {
   email: string;
   displayName?: string;
   orgName?: string;
+  role: 'vendor' | 'admin';
+  profile?: UserProfile;
 }
 
 interface AuthContextType {
@@ -17,8 +20,9 @@ interface AuthContextType {
   isAdmin: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (e: string, p: string) => Promise<void>;
-  signUpWithEmail: (e: string, p: string, orgName?: string) => Promise<void>;
+  signUpWithEmail: (e: string, p: string, orgDetails?: Partial<UserProfile>) => Promise<void>;
   signOutUser: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -28,53 +32,122 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        const email = session.user.email || '';
-        const orgName = session.user.user_metadata?.orgName;
-        const appUser: AppUser = {
-          id: session.user.id,
-          uid: session.user.id,
-          email,
-          displayName: orgName || session.user.user_metadata?.full_name || email.split('@')[0],
-          orgName,
+  const fetchOrCreateProfile = async (userId: string, email: string, defaultMeta?: any): Promise<UserProfile | null> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (data) {
+        return {
+          id: data.id,
+          email: data.email,
+          role: data.role,
+          orgName: data.org_name,
+          contactPerson: data.contact_person,
+          phone: data.phone,
+          sector: data.sector,
+          website: data.website,
+          businessDescription: data.business_description,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at,
         };
-        setUser(appUser);
-        setIsAdmin(email.toLowerCase() === 'admin@nlf.com' || session.user.app_metadata?.role === 'admin');
-      } else {
-        setUser(null);
-        setIsAdmin(false);
       }
+
+      // Profile doesn't exist — create it
+      const isKnownAdmin = email.toLowerCase() === 'admin@nlf.com';
+      const role = isKnownAdmin ? 'admin' : 'vendor';
+      const newProfile = {
+        id: userId,
+        email,
+        role,
+        org_name: defaultMeta?.orgName || '',
+        contact_person: defaultMeta?.contactPerson || '',
+        phone: defaultMeta?.phone || '',
+        sector: defaultMeta?.sector || '',
+      };
+
+      const { data: created, error: createErr } = await supabase
+        .from('profiles')
+        .upsert(newProfile)
+        .select()
+        .single();
+
+      if (created) {
+        return {
+          id: created.id,
+          email: created.email,
+          role: created.role,
+          orgName: created.org_name,
+          contactPerson: created.contact_person,
+          phone: created.phone,
+          sector: created.sector,
+          website: created.website,
+          businessDescription: created.business_description,
+          createdAt: created.created_at,
+          updatedAt: created.updated_at,
+        };
+      }
+    } catch (err) {
+      console.error('Error fetching/creating profile:', err);
+    }
+
+    return {
+      id: userId,
+      email,
+      role: email.toLowerCase() === 'admin@nlf.com' ? 'admin' : 'vendor',
+    };
+  };
+
+  const syncUser = async (sessionUser: any) => {
+    if (!sessionUser) {
+      setUser(null);
+      setIsAdmin(false);
       setLoading(false);
+      return;
+    }
+
+    const email = sessionUser.email || '';
+    const prof = await fetchOrCreateProfile(sessionUser.id, email, sessionUser.user_metadata);
+    const adminRole = prof?.role === 'admin' || email.toLowerCase() === 'admin@nlf.com';
+
+    const appUser: AppUser = {
+      id: sessionUser.id,
+      uid: sessionUser.id,
+      email,
+      displayName: prof?.orgName || sessionUser.user_metadata?.orgName || sessionUser.user_metadata?.full_name || email.split('@')[0],
+      orgName: prof?.orgName || sessionUser.user_metadata?.orgName,
+      role: adminRole ? 'admin' : 'vendor',
+      profile: prof || undefined,
+    };
+
+    setUser(appUser);
+    setIsAdmin(adminRole);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      syncUser(session?.user || null);
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        const email = session.user.email || '';
-        const orgName = session.user.user_metadata?.orgName;
-        const appUser: AppUser = {
-          id: session.user.id,
-          uid: session.user.id,
-          email,
-          displayName: orgName || session.user.user_metadata?.full_name || email.split('@')[0],
-          orgName,
-        };
-        setUser(appUser);
-        setIsAdmin(email.toLowerCase() === 'admin@nlf.com' || session.user.app_metadata?.role === 'admin');
-      } else {
-        setUser(null);
-        setIsAdmin(false);
-      }
-      setLoading(false);
+      syncUser(session?.user || null);
     });
 
     return () => {
       subscription.unsubscribe();
     };
   }, []);
+
+  const refreshProfile = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      await syncUser(session.user);
+    }
+  };
 
   const signInWithGoogle = async () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vendors.livestockcarnival.ng';
@@ -95,25 +168,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
-  const signUpWithEmail = async (e: string, p: string, orgName?: string) => {
+  const signUpWithEmail = async (e: string, p: string, orgDetails?: Partial<UserProfile>) => {
     const { data, error } = await supabase.auth.signUp({
       email: e,
       password: p,
       options: {
         data: {
-          orgName: orgName || '',
+          orgName: orgDetails?.orgName || '',
         },
       },
     });
     if (error) throw error;
-    if (orgName && data.user && typeof window !== 'undefined') {
-      localStorage.setItem(`nlf_org_${data.user.id}`, orgName);
+
+    if (data.user) {
+      await fetchOrCreateProfile(data.user.id, e, orgDetails);
     }
   };
 
   const signOutUser = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    setUser(null);
+    setIsAdmin(false);
   };
 
   return (
@@ -124,7 +200,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithGoogle,
       signInWithEmail,
       signUpWithEmail,
-      signOutUser
+      signOutUser,
+      refreshProfile
     }}>
       {children}
     </AuthContext.Provider>

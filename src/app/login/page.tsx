@@ -56,7 +56,7 @@ export default function LoginPage() {
       if (authMode === 'signin') {
         await signInWithEmail(email, password);
       } else {
-        await signUpWithEmail(email, password, orgName.trim());
+        await signUpWithEmail(email, password, { orgName: orgName.trim() });
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
