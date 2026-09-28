@@ -30,8 +30,11 @@ export const tierColorMap: Record<TierColorCode, { cardBg: string, borderColor: 
   },
 };
 
-export function getTierColors(colorCode: TierColorCode) {
-  return tierColorMap[colorCode];
+export function getTierColors(colorCode?: TierColorCode | string) {
+  if (colorCode && colorCode in tierColorMap) {
+    return tierColorMap[colorCode as TierColorCode];
+  }
+  return tierColorMap.sage;
 }
 
 export function formatNaira(amount: number): string {

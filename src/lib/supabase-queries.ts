@@ -32,13 +32,13 @@ export function useTiers() {
           id: t.id,
           name: t.name,
           dimension: t.dimension,
-          colorCode: t.color_code,
+          colorCode: t.colorCode || t.color_code || 'sage',
           price: Number(t.price),
           stock: t.stock,
-          initialStock: t.initial_stock,
-          isLocked: t.is_locked,
+          initialStock: t.initial_stock || t.initialStock || t.stock,
+          isLocked: Boolean(t.is_locked ?? t.isLocked ?? false),
           perks: t.perks || [],
-          updatedAt: t.updated_at,
+          updatedAt: t.updated_at || t.updatedAt,
         }));
         setTiers(mapped);
       }
