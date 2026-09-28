@@ -9,6 +9,7 @@ import {
   updateReservationStatus,
   addCustomSurcharge,
   assignBoothNumber,
+  deleteBoothReservation,
   updateTierPrice,
   updateTierStock,
   toggleTierLock,
@@ -530,7 +531,7 @@ export default function AdminDashboardPage() {
                         <option value="REVOKED">Revoked</option>
                       </select>
                     </td>
-                    <td className="p-3 text-right">
+                    <td className="p-3 text-right flex justify-end gap-1.5 items-center">
                       <Button
                         variant="outline"
                         size="sm"
@@ -543,6 +544,17 @@ export default function AdminDashboardPage() {
                       >
                         Inspect / Fee {res.customRequests && res.customRequests.length > 0 && `(${res.customRequests.length})`}
                       </Button>
+                      <button
+                        onClick={async () => {
+                          if (confirm(`Delete reservation ${res.referenceId}?`)) {
+                            await deleteBoothReservation(res.id);
+                          }
+                        }}
+                        title="Delete Reservation"
+                        className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded border border-rose-200 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </td>
                   </tr>
                 ))}

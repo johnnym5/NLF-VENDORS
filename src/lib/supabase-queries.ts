@@ -460,6 +460,21 @@ export async function assignBoothNumber(reservationId: string, boothNumber: stri
 }
 
 /**
+ * Cancel / Delete a booth reservation.
+ */
+export async function deleteBoothReservation(reservationId: string) {
+  const { error } = await supabase
+    .from('booth_reservations')
+    .delete()
+    .eq('id', reservationId);
+
+  if (error) {
+    console.error('Error deleting reservation:', error);
+    throw new Error(error.message);
+  }
+}
+
+/**
  * Manual Secretariat Organization Onboarding.
  */
 export async function adminRegisterOrganization(data: {

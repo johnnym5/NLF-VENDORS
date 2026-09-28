@@ -2,10 +2,10 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, Loader2, Clock, CheckCircle2, AlertTriangle, CreditCard, Plus, ArrowRight, ShieldCheck, DollarSign } from 'lucide-react';
+import { MapPin, Loader2, Clock, CheckCircle2, AlertTriangle, CreditCard, Plus, ArrowRight, ShieldCheck, DollarSign, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/lib/auth';
-import { useVendorReservations, updateReservationStatus } from '@/lib/supabase-queries';
+import { useVendorReservations, updateReservationStatus, deleteBoothReservation } from '@/lib/supabase-queries';
 import { formatNaira } from '@/lib/design-tokens';
 import { PAYSTACK_PUBLIC_KEY } from '@/lib/paystack';
 import { FadeIn } from '@/components/ui/FadeIn';
@@ -25,8 +25,15 @@ function PermitContent() {
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
+  // Deletion modal state
+  const [deletingResId, setDeletingResId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   useEffect(() => {
     if (reservations.length > 0 && activeReservationIndex === null) {
+      setActiveReservationIndex(reservations.length - 1);
+    } else if (reservations.length > 0 && activeReservationIndex !== null && activeReservationIndex >= reservations.length) {
       setActiveReservationIndex(reservations.length - 1);
     }
   }, [reservations, activeReservationIndex]);
@@ -118,6 +125,22 @@ function PermitContent() {
     }
   };
 
+  const handleConfirmDelete = async () => {
+    if (!deletingResId) return;
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await deleteBoothReservation(deletingResId);
+      setDeletingResId(null);
+      setActiveReservationIndex(0);
+    } catch (err: any) {
+      setDeleteError(err.message || 'Failed to delete reservation');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (authLoading || resLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#FBFBFA] space-y-4">
@@ -144,6 +167,8 @@ function PermitContent() {
   const isConfirmedPaid = currentRes.status === 'CONFIRMED_PAID';
   const isRevoked = currentRes.status === 'REVOKED';
 
+  const deletingTarget = reservations.find((r) => r.id === deletingResId);
+
   return (
     <div className="min-h-screen bg-[#FBFBFA] py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">
@@ -167,17 +192,30 @@ function PermitContent() {
             </span>
             <div className="flex flex-wrap gap-2 justify-center">
               {reservations.map((res, idx) => (
-                <button
-                  key={res.id}
-                  onClick={() => setActiveReservationIndex(idx)}
-                  className={`px-3.5 py-1.5 rounded-lg font-mono text-xs transition-all border ${
-                    idx === (activeReservationIndex ?? reservations.length - 1)
-                      ? 'bg-slate-900 text-white font-bold border-slate-900 shadow-sm'
-                      : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200/60'
-                  }`}
-                >
-                  {res.referenceId} ({res.assignedBoothNumber === 'Pending Assignment' ? 'Pending' : res.assignedBoothNumber})
-                </button>
+                <div key={res.id} className="inline-flex items-center">
+                  <button
+                    onClick={() => setActiveReservationIndex(idx)}
+                    className={`px-3 py-1.5 rounded-l-lg font-mono text-xs transition-all border ${
+                      idx === (activeReservationIndex ?? reservations.length - 1)
+                        ? 'bg-slate-900 text-white font-bold border-slate-900 shadow-sm'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200/60'
+                    }`}
+                  >
+                    {res.referenceId} ({res.assignedBoothNumber === 'Pending Assignment' ? 'Pending' : res.assignedBoothNumber})
+                  </button>
+                  {res.status !== 'CONFIRMED_PAID' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingResId(res.id);
+                      }}
+                      title="Delete this reservation"
+                      className="px-2 py-1.5 bg-rose-50 border border-l-0 border-rose-200 text-rose-600 hover:bg-rose-100 rounded-r-lg transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -293,9 +331,19 @@ function PermitContent() {
 
               {/* Vendor Info Section */}
               <div className="bg-slate-50 rounded-lg p-6 mb-6 text-left border border-slate-100">
-                <h2 className="text-xl font-heading font-bold text-slate-900 mb-4">
-                  {currentRes.profile?.orgName || 'Exhibitor Organization'}
-                </h2>
+                <div className="flex justify-between items-start mb-4">
+                  <h2 className="text-xl font-heading font-bold text-slate-900">
+                    {currentRes.profile?.orgName || 'Exhibitor Organization'}
+                  </h2>
+                  {!isConfirmedPaid && (
+                    <button
+                      onClick={() => setDeletingResId(currentRes.id)}
+                      className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 font-semibold bg-rose-50 px-2.5 py-1 rounded border border-rose-200 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Cancel / Remove Space
+                    </button>
+                  )}
+                </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-600">
                   <div>
@@ -478,6 +526,45 @@ function PermitContent() {
                   </>
                 ) : (
                   `Pay ${formatNaira(currentRes.totalAmount)} via Paystack`
+                )}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Delete Reservation Confirmation Modal */}
+        <Modal
+          isOpen={!!deletingResId}
+          onClose={() => !deleting && setDeletingResId(null)}
+          title="Cancel & Remove Reservation"
+          size="sm"
+        >
+          <div className="space-y-4">
+            {deleteError && <Alert variant="error">{deleteError}</Alert>}
+
+            <p className="text-sm text-slate-600 leading-relaxed">
+              Are you sure you want to cancel and remove reservation <strong className="font-mono text-slate-900">{deletingTarget?.referenceId}</strong> ({deletingTarget?.tierName})?
+            </p>
+            <p className="text-xs text-slate-500">
+              This space request will be removed from your profile and returned to the exhibition catalog.
+            </p>
+
+            <div className="pt-4 flex gap-3 border-t border-slate-100">
+              <Button variant="outline" className="flex-1" onClick={() => setDeletingResId(null)} disabled={deleting}>
+                Keep Space
+              </Button>
+              <Button
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                    Removing...
+                  </>
+                ) : (
+                  'Yes, Remove Space'
                 )}
               </Button>
             </div>
