@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { supabaseAdmin } from '@/lib/supabase-admin';
 import {
   BoothTier,
   BoothReservation,
@@ -268,11 +267,12 @@ export async function saveBoothReservation(
   if (profileErr) console.warn('Profile upsert warning:', profileErr);
 
   // 2. Fetch tier details
-  const { data: tierData, error: tierError } = await supabase
+  const { data: tierList, error: tierError } = await supabase
     .from('booth_tiers')
     .select('*')
-    .eq('id', tierId)
-    .single();
+    .eq('id', tierId);
+
+  const tierData = tierList && tierList.length > 0 ? tierList[0] : null;
 
   if (tierError || !tierData) {
     throw new Error('Selected booth tier does not exist.');
@@ -329,26 +329,27 @@ export async function updateReservationStatus(
   newStatus: ReservationStatus,
   paymentReference?: string
 ) {
-  const db = supabaseAdmin || supabase;
-
-  // Fetch current reservation
-  const { data: currentRes, error: fetchErr } = await db
+  // Use primary authenticated client carrying active user JWT session
+  const { data: list, error: fetchErr } = await supabase
     .from('booth_reservations')
     .select('*')
-    .eq('id', reservationId)
-    .single();
+    .eq('id', reservationId);
 
-  if (fetchErr || !currentRes) {
+  if (fetchErr || !list || list.length === 0) {
+    console.error('Fetch reservation error:', fetchErr);
     throw new Error('Reservation not found');
   }
 
+  const currentRes = list[0];
+
   // Core Rule: If transitioning to CONFIRMED_PAID for the first time
   if (newStatus === 'CONFIRMED_PAID' && currentRes.status !== 'CONFIRMED_PAID') {
-    const { data: tier } = await db
+    const { data: tierList } = await supabase
       .from('booth_tiers')
       .select('stock')
-      .eq('id', currentRes.tier_id)
-      .single();
+      .eq('id', currentRes.tier_id);
+
+    const tier = tierList && tierList.length > 0 ? tierList[0] : null;
 
     if (tier && tier.stock <= 0) {
       throw new Error('Cannot confirm order: Selected tier is currently out of stock.');
@@ -356,7 +357,7 @@ export async function updateReservationStatus(
 
     // Decrement tier stock by 1
     if (tier) {
-      await db
+      await supabase
         .from('booth_tiers')
         .update({ stock: Math.max(0, tier.stock - 1) })
         .eq('id', currentRes.tier_id);
@@ -365,7 +366,7 @@ export async function updateReservationStatus(
     // Calculate vendor sequence safely
     let sequence = 1;
     try {
-      const { data: confirmedList } = await db
+      const { data: confirmedList } = await supabase
         .from('booth_reservations')
         .select('id')
         .eq('status', 'CONFIRMED_PAID');
@@ -376,7 +377,7 @@ export async function updateReservationStatus(
     }
 
     // Update reservation status to CONFIRMED_PAID
-    const { error: updateErr } = await db
+    const { error: updateErr } = await supabase
       .from('booth_reservations')
       .update({
         status: 'CONFIRMED_PAID',
@@ -391,7 +392,7 @@ export async function updateReservationStatus(
   }
 
   // General status transition (e.g. APPROVED_PENDING_PAYMENT, REVOKED, RESERVED_PENDING_APPROVAL)
-  const { error: updateErr } = await db
+  const { error: updateErr } = await supabase
     .from('booth_reservations')
     .update({
       status: newStatus,
@@ -412,19 +413,17 @@ export async function addCustomSurcharge(
   adminNotes?: string,
   requestStatus: RequestStatus = 'APPROVED'
 ) {
-  const db = supabaseAdmin || supabase;
-
   // 1. Fetch reservation
-  const { data: res } = await db
+  const { data: list } = await supabase
     .from('booth_reservations')
     .select('additional_fees')
-    .eq('id', reservationId)
-    .single();
+    .eq('id', reservationId);
 
+  const res = list && list.length > 0 ? list[0] : null;
   const currentFee = Number(res?.additional_fees || 0);
   const newFee = Math.max(0, currentFee + additionalFee);
 
-  await db
+  await supabase
     .from('booth_reservations')
     .update({
       additional_fees: newFee,
@@ -434,7 +433,7 @@ export async function addCustomSurcharge(
 
   // 2. Update specific custom request if ID supplied
   if (requestId) {
-    await db
+    await supabase
       .from('custom_requests')
       .update({
         additional_fee: additionalFee,
@@ -449,8 +448,7 @@ export async function addCustomSurcharge(
  * Assign or update physical booth location string (e.g. "Booth 04").
  */
 export async function assignBoothNumber(reservationId: string, boothNumber: string) {
-  const db = supabaseAdmin || supabase;
-  const { error } = await db
+  const { error } = await supabase
     .from('booth_reservations')
     .update({
       assigned_booth_number: boothNumber || 'Pending Assignment',
@@ -477,21 +475,21 @@ export async function adminRegisterOrganization(data: {
   customRequestText?: string;
   adminNotes?: string;
 }) {
-  const db = supabaseAdmin || supabase;
   let userId: string | null = null;
 
-  const { data: existingProfile } = await db
+  const { data: existingList } = await supabase
     .from('profiles')
     .select('id')
-    .eq('email', data.email.toLowerCase().trim())
-    .single();
+    .eq('email', data.email.toLowerCase().trim());
+
+  const existingProfile = existingList && existingList.length > 0 ? existingList[0] : null;
 
   if (existingProfile) {
     userId = existingProfile.id;
   } else {
     userId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'usr_' + Math.random().toString(36).substring(2, 15);
 
-    await db.from('profiles').insert({
+    await supabase.from('profiles').insert({
       id: userId,
       email: data.email.toLowerCase().trim(),
       role: 'vendor',
@@ -504,11 +502,12 @@ export async function adminRegisterOrganization(data: {
     });
   }
 
-  const { data: tierData, error: tierErr } = await db
+  const { data: tierList, error: tierErr } = await supabase
     .from('booth_tiers')
     .select('*')
-    .eq('id', data.tierId)
-    .single();
+    .eq('id', data.tierId);
+
+  const tierData = tierList && tierList.length > 0 ? tierList[0] : null;
 
   if (tierErr || !tierData) {
     throw new Error('Selected booth tier does not exist.');
@@ -522,13 +521,13 @@ export async function adminRegisterOrganization(data: {
       throw new Error('Cannot confirm order: Selected tier is out of stock.');
     }
 
-    await db
+    await supabase
       .from('booth_tiers')
       .update({ stock: Math.max(0, tierData.stock - 1) })
       .eq('id', data.tierId);
 
     try {
-      const { data: confirmedList } = await db
+      const { data: confirmedList } = await supabase
         .from('booth_reservations')
         .select('id')
         .eq('status', 'CONFIRMED_PAID');
@@ -543,7 +542,7 @@ export async function adminRegisterOrganization(data: {
 
   const referenceId = 'BTH-' + Math.floor(1000 + Math.random() * 9000).toString();
 
-  const { data: reservation, error: resErr } = await db
+  const { data: reservation, error: resErr } = await supabase
     .from('booth_reservations')
     .insert({
       reference_id: referenceId,
@@ -565,7 +564,7 @@ export async function adminRegisterOrganization(data: {
   }
 
   if (data.customRequestText && data.customRequestText.trim().length > 0) {
-    await db.from('custom_requests').insert({
+    await supabase.from('custom_requests').insert({
       reservation_id: reservation.id,
       request_text: data.customRequestText.trim(),
       additional_fee: data.additionalFees || 0,
@@ -579,14 +578,13 @@ export async function adminRegisterOrganization(data: {
 
 // Tier Management Functions
 export async function updateTierPrice(tierId: string, newPrice: number) {
-  const db = supabaseAdmin || supabase;
-  const { error } = await db
+  const { error } = await supabase
     .from('booth_tiers')
     .update({ price: newPrice, updatedAt: new Date().toISOString() })
     .eq('id', tierId);
 
   if (error) {
-    const { error: err2 } = await db
+    const { error: err2 } = await supabase
       .from('booth_tiers')
       .update({ price: newPrice })
       .eq('id', tierId);
@@ -595,14 +593,13 @@ export async function updateTierPrice(tierId: string, newPrice: number) {
 }
 
 export async function updateTierStock(tierId: string, newStock: number) {
-  const db = supabaseAdmin || supabase;
-  const { error } = await db
+  const { error } = await supabase
     .from('booth_tiers')
     .update({ stock: newStock, updatedAt: new Date().toISOString() })
     .eq('id', tierId);
 
   if (error) {
-    const { error: err2 } = await db
+    const { error: err2 } = await supabase
       .from('booth_tiers')
       .update({ stock: newStock })
       .eq('id', tierId);
@@ -611,14 +608,13 @@ export async function updateTierStock(tierId: string, newStock: number) {
 }
 
 export async function toggleTierLock(tierId: string, currentLockState: boolean) {
-  const db = supabaseAdmin || supabase;
-  const { error } = await db
+  const { error } = await supabase
     .from('booth_tiers')
     .update({ isLocked: !currentLockState, is_locked: !currentLockState })
     .eq('id', tierId);
 
   if (error) {
-    const { error: err2 } = await db
+    const { error: err2 } = await supabase
       .from('booth_tiers')
       .update({ isLocked: !currentLockState })
       .eq('id', tierId);
@@ -627,9 +623,8 @@ export async function toggleTierLock(tierId: string, currentLockState: boolean) 
 }
 
 export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' | 'isLocked'>) {
-  const db = supabaseAdmin || supabase;
   const tierId = 'tier_' + Math.random().toString(36).substring(2, 10);
-  const { error } = await db.from('booth_tiers').insert({
+  const { error } = await supabase.from('booth_tiers').insert({
     id: tierId,
     name: tierData.name,
     dimension: tierData.dimension,
@@ -645,8 +640,7 @@ export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' 
 }
 
 export async function updateTierName(tierId: string, newName: string) {
-  const db = supabaseAdmin || supabase;
-  const { error } = await db
+  const { error } = await supabase
     .from('booth_tiers')
     .update({ name: newName })
     .eq('id', tierId);
@@ -654,7 +648,6 @@ export async function updateTierName(tierId: string, newName: string) {
 }
 
 export async function editBoothTierFull(tierId: string, updatedFields: Partial<Omit<BoothTier, 'id' | 'updatedAt'>>) {
-  const db = supabaseAdmin || supabase;
   const updates: any = { updatedAt: new Date().toISOString() };
   if (updatedFields.name !== undefined) updates.name = updatedFields.name;
   if (updatedFields.dimension !== undefined) updates.dimension = updatedFields.dimension;
@@ -667,16 +660,15 @@ export async function editBoothTierFull(tierId: string, updatedFields: Partial<O
   if (updatedFields.isLocked !== undefined) updates.isLocked = updatedFields.isLocked;
   if (updatedFields.perks !== undefined) updates.perks = updatedFields.perks;
 
-  const { error } = await db.from('booth_tiers').update(updates).eq('id', tierId);
+  const { error } = await supabase.from('booth_tiers').update(updates).eq('id', tierId);
   if (error) {
     delete updates.updatedAt;
-    const { error: err2 } = await db.from('booth_tiers').update(updates).eq('id', tierId);
+    const { error: err2 } = await supabase.from('booth_tiers').update(updates).eq('id', tierId);
     if (err2) throw error;
   }
 }
 
 export async function deleteBoothTier(tierId: string) {
-  const db = supabaseAdmin || supabase;
-  const { error } = await db.from('booth_tiers').delete().eq('id', tierId);
+  const { error } = await supabase.from('booth_tiers').delete().eq('id', tierId);
   if (error) throw error;
 }
