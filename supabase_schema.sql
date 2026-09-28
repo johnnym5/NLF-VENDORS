@@ -147,8 +147,23 @@ CREATE POLICY "Custom Requests Insert" ON public.custom_requests FOR INSERT WITH
 DROP POLICY IF EXISTS "Admin Custom Requests Write" ON public.custom_requests;
 CREATE POLICY "Admin Custom Requests Write" ON public.custom_requests FOR ALL USING (public.is_admin());
 
--- Enable Realtime
-ALTER PUBLICATION supabase_realtime ADD TABLE public.booth_tiers;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.booth_reservations;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.custom_requests;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+-- Enable Realtime safely (ignores if table is already in publication)
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.booth_tiers;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.booth_reservations;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.custom_requests;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
