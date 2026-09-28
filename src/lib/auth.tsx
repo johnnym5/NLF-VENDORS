@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchOrCreateProfile = async (userId: string, email: string, defaultMeta?: any): Promise<UserProfile | null> => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -63,13 +63,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: userId,
         email,
         role,
-        org_name: defaultMeta?.orgName || '',
-        contact_person: defaultMeta?.contactPerson || '',
+        org_name: defaultMeta?.orgName || defaultMeta?.full_name || '',
+        contact_person: defaultMeta?.contactPerson || defaultMeta?.full_name || '',
         phone: defaultMeta?.phone || '',
         sector: defaultMeta?.sector || '',
       };
 
-      const { data: created, error: createErr } = await supabase
+      const { data: created } = await supabase
         .from('profiles')
         .upsert(newProfile)
         .select()
@@ -151,13 +151,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     const origin = typeof window !== 'undefined' ? window.location.origin : 'https://vendors.livestockcarnival.ng';
-    const { error } = await supabase.auth.signInWithOAuth({
+    const redirectUrl = `${origin}/auth/callback`;
+
+    // Request OAuth URL without full page redirect
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${origin}/login`,
+        redirectTo: redirectUrl,
+        skipBrowserRedirect: true,
       },
     });
-    if (error) throw error;
+
+    if (error || !data?.url) {
+      throw new Error(error?.message || 'Failed to initialize Google Sign-In');
+    }
+
+    // Open centered popup window
+    const width = 500;
+    const height = 650;
+    const left = typeof window !== 'undefined' ? window.screen.width / 2 - width / 2 : 100;
+    const top = typeof window !== 'undefined' ? window.screen.height / 2 - height / 2 : 100;
+
+    const popup = window.open(
+      data.url,
+      'GoogleAuthPopup',
+      `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+    );
+
+    return new Promise<void>((resolve) => {
+      if (!popup) {
+        // Fallback to direct redirect if popups blocked
+        window.location.href = data.url;
+        return resolve();
+      }
+
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'SUPABASE_AUTH_SUCCESS') {
+          window.removeEventListener('message', handleMessage);
+          if (popup && !popup.closed) popup.close();
+          refreshProfile().then(() => resolve());
+        }
+      };
+
+      window.addEventListener('message', handleMessage);
+
+      const checkTimer = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkTimer);
+          window.removeEventListener('message', handleMessage);
+          refreshProfile().then(() => resolve());
+        }
+      }, 500);
+    });
   };
 
   const signInWithEmail = async (e: string, p: string) => {
