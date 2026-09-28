@@ -63,10 +63,30 @@ function PermitContent() {
         });
       }
 
-      const handler = (window as any).PaystackPop.setup({
+      const resId = currentRes.id;
+
+      const handleSuccess = function (response: any) {
+        const reference = response.reference || response.trxref || 'PST-SUCCESS';
+        updateReservationStatus(resId, 'CONFIRMED_PAID', reference)
+          .then(() => {
+            setShowPayModal(false);
+          })
+          .catch((err: any) => {
+            setPaymentError(err.message || 'Payment completed, but database status update failed.');
+          })
+          .finally(() => {
+            setPaying(false);
+          });
+      };
+
+      const handleClose = function () {
+        setPaying(false);
+      };
+
+      const paystackOptions = {
         key: PAYSTACK_PUBLIC_KEY,
         email: currentRes.profile?.email || user.email || '',
-        amount: Math.round(currentRes.totalAmount * 100), // Kobo conversion
+        amount: Math.round(currentRes.totalAmount * 100),
         currency: 'NGN',
         ref: 'PST-' + Math.random().toString(36).substring(2, 10).toUpperCase(),
         metadata: {
@@ -83,21 +103,13 @@ function PermitContent() {
             },
           ],
         },
-        callback: async function (response: any) {
-          try {
-            await updateReservationStatus(currentRes.id, 'CONFIRMED_PAID', response.reference);
-            setShowPayModal(false);
-          } catch (err: any) {
-            setPaymentError(err.message || 'Payment confirmed by Paystack, but database record update failed.');
-          } finally {
-            setPaying(false);
-          }
-        },
-        onClose: function () {
-          setPaying(false);
-        },
-      });
+        callback: handleSuccess,
+        onSuccess: handleSuccess,
+        onClose: handleClose,
+        onCancel: handleClose,
+      };
 
+      const handler = (window as any).PaystackPop.setup(paystackOptions);
       handler.openIframe();
     } catch (err: any) {
       console.error('Paystack initialization error:', err);
