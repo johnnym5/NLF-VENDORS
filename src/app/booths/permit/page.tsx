@@ -95,7 +95,7 @@ function PermitContent() {
         email: currentRes.profile?.email || user.email || '',
         amount: Math.round(currentRes.totalAmount * 100),
         currency: 'NGN',
-        channels: ['card', 'bank', 'ussd', 'qr', 'mobile_money', 'bank_transfer'],
+        channels: ['card', 'bank', 'ussd', 'bank_transfer'],
         ref: 'PST-' + Math.random().toString(36).substring(2, 10).toUpperCase(),
         metadata: {
           custom_fields: [
