@@ -11,6 +11,14 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://vendors.livestockcarnival.ng'),
   title: 'NLF 2026 - Vendor Booth Portal',
   description: 'National Livestock Festival 2026 Vendor Booth Reservation Portal',
+  icons: {
+    icon: [
+      { url: '/logo.jpeg' },
+      { url: '/favicon.ico' },
+    ],
+    shortcut: '/logo.jpeg',
+    apple: '/logo.jpeg',
+  },
   viewport: {
     width: 'device-width',
     initialScale: 1,
@@ -22,6 +30,14 @@ export const metadata: Metadata = {
     description: 'National Livestock Festival 2026 Vendor Booth Reservation Portal',
     url: 'https://vendors.livestockcarnival.ng',
     siteName: 'NLF Vendors',
+    images: [
+      {
+        url: '/logo.jpeg',
+        width: 800,
+        height: 800,
+        alt: 'National Livestock Festival Logo',
+      },
+    ],
   },
 };
 
@@ -32,6 +48,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`${inter.variable} ${plusJakarta.variable} ${jetbrains.variable}`}>
+      <head>
+        <link rel="icon" href="/logo.jpeg" />
+        <link rel="apple-touch-icon" href="/logo.jpeg" />
+      </head>
       <body className="font-sans antialiased bg-[#FBFBFA] text-gray-900 min-h-screen">
         <AuthProvider>
           {children}

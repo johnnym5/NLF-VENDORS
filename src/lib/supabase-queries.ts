@@ -587,25 +587,43 @@ export async function adminRegisterOrganization(data: {
 export async function updateTierPrice(tierId: string, newPrice: number) {
   const { error } = await supabase
     .from('booth_tiers')
-    .update({ price: newPrice, updated_at: new Date().toISOString() })
+    .update({ price: newPrice, updatedAt: new Date().toISOString() })
     .eq('id', tierId);
-  if (error) throw error;
+  if (error) {
+    const { error: err2 } = await supabase
+      .from('booth_tiers')
+      .update({ price: newPrice })
+      .eq('id', tierId);
+    if (err2) throw error;
+  }
 }
 
 export async function updateTierStock(tierId: string, newStock: number) {
   const { error } = await supabase
     .from('booth_tiers')
-    .update({ stock: newStock, updated_at: new Date().toISOString() })
+    .update({ stock: newStock, updatedAt: new Date().toISOString() })
     .eq('id', tierId);
-  if (error) throw error;
+  if (error) {
+    const { error: err2 } = await supabase
+      .from('booth_tiers')
+      .update({ stock: newStock })
+      .eq('id', tierId);
+    if (err2) throw error;
+  }
 }
 
 export async function toggleTierLock(tierId: string, currentLockState: boolean) {
   const { error } = await supabase
     .from('booth_tiers')
-    .update({ is_locked: !currentLockState, updated_at: new Date().toISOString() })
+    .update({ isLocked: !currentLockState, is_locked: !currentLockState })
     .eq('id', tierId);
-  if (error) throw error;
+  if (error) {
+    const { error: err2 } = await supabase
+      .from('booth_tiers')
+      .update({ isLocked: !currentLockState })
+      .eq('id', tierId);
+    if (err2) throw error;
+  }
 }
 
 export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' | 'isLocked'>) {
@@ -614,11 +632,11 @@ export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' 
     id: tierId,
     name: tierData.name,
     dimension: tierData.dimension,
-    color_code: tierData.colorCode,
+    colorCode: tierData.colorCode,
     price: tierData.price,
     stock: tierData.stock,
-    initial_stock: tierData.initialStock,
-    is_locked: false,
+    initialStock: tierData.initialStock,
+    isLocked: false,
     perks: tierData.perks,
   });
   if (error) throw error;
@@ -628,24 +646,30 @@ export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' 
 export async function updateTierName(tierId: string, newName: string) {
   const { error } = await supabase
     .from('booth_tiers')
-    .update({ name: newName, updated_at: new Date().toISOString() })
+    .update({ name: newName })
     .eq('id', tierId);
   if (error) throw error;
 }
 
 export async function editBoothTierFull(tierId: string, updatedFields: Partial<Omit<BoothTier, 'id' | 'updatedAt'>>) {
-  const updates: any = { updated_at: new Date().toISOString() };
+  const updates: any = { updatedAt: new Date().toISOString() };
   if (updatedFields.name !== undefined) updates.name = updatedFields.name;
   if (updatedFields.dimension !== undefined) updates.dimension = updatedFields.dimension;
-  if (updatedFields.colorCode !== undefined) updates.color_code = updatedFields.colorCode;
+  if (updatedFields.colorCode !== undefined) {
+    updates.colorCode = updatedFields.colorCode;
+  }
   if (updatedFields.price !== undefined) updates.price = updatedFields.price;
   if (updatedFields.stock !== undefined) updates.stock = updatedFields.stock;
-  if (updatedFields.initialStock !== undefined) updates.initial_stock = updatedFields.initialStock;
-  if (updatedFields.isLocked !== undefined) updates.is_locked = updatedFields.isLocked;
+  if (updatedFields.initialStock !== undefined) updates.initialStock = updatedFields.initialStock;
+  if (updatedFields.isLocked !== undefined) updates.isLocked = updatedFields.isLocked;
   if (updatedFields.perks !== undefined) updates.perks = updatedFields.perks;
 
   const { error } = await supabase.from('booth_tiers').update(updates).eq('id', tierId);
-  if (error) throw error;
+  if (error) {
+    delete updates.updatedAt;
+    const { error: err2 } = await supabase.from('booth_tiers').update(updates).eq('id', tierId);
+    if (err2) throw error;
+  }
 }
 
 export async function deleteBoothTier(tierId: string) {
