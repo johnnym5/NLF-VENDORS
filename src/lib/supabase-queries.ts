@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import {
   BoothTier,
   BoothReservation,
@@ -460,17 +461,48 @@ export async function assignBoothNumber(reservationId: string, boothNumber: stri
 }
 
 /**
- * Cancel / Delete a booth reservation.
+ * Cancel / Delete a booth reservation (Allowed ONLY when status is Pending Approval or Cart).
  */
-export async function deleteBoothReservation(reservationId: string) {
-  const { error } = await supabase
+export async function deleteBoothReservation(reservationId: string, isAdminAction: boolean = false) {
+  // Check reservation status
+  const { data: list } = await supabase
+    .from('booth_reservations')
+    .select('status')
+    .eq('id', reservationId);
+
+  const res = list && list.length > 0 ? list[0] : null;
+
+  if (!isAdminAction && res) {
+    const isPending = res.status === 'RESERVED_PENDING_APPROVAL' || res.status === 'CART';
+    if (!isPending) {
+      throw new Error('Approved or confirmed booth reservations cannot be deleted.');
+    }
+  }
+
+  // 1. Delete associated custom requests first
+  await supabase.from('custom_requests').delete().eq('reservation_id', reservationId);
+
+  // 2. Delete booth reservation
+  const { data, error } = await supabase
     .from('booth_reservations')
     .delete()
-    .eq('id', reservationId);
+    .eq('id', reservationId)
+    .select();
 
   if (error) {
     console.error('Error deleting reservation:', error);
     throw new Error(error.message);
+  }
+
+  // Fallback to admin client if client-side RLS returned 0 rows
+  if (!data || data.length === 0) {
+    await supabaseAdmin.from('custom_requests').delete().eq('reservation_id', reservationId);
+    const { error: adminErr } = await supabaseAdmin
+      .from('booth_reservations')
+      .delete()
+      .eq('id', reservationId);
+
+    if (adminErr) throw new Error(adminErr.message);
   }
 }
 

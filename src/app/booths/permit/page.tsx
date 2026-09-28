@@ -191,32 +191,37 @@ function PermitContent() {
               Your Reserved Spaces ({reservations.length})
             </span>
             <div className="flex flex-wrap gap-2 justify-center">
-              {reservations.map((res, idx) => (
-                <div key={res.id} className="inline-flex items-center">
-                  <button
-                    onClick={() => setActiveReservationIndex(idx)}
-                    className={`px-3 py-1.5 rounded-l-lg font-mono text-xs transition-all border ${
-                      idx === (activeReservationIndex ?? reservations.length - 1)
-                        ? 'bg-slate-900 text-white font-bold border-slate-900 shadow-sm'
-                        : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200/60'
-                    }`}
-                  >
-                    {res.referenceId} ({res.assignedBoothNumber === 'Pending Assignment' ? 'Pending' : res.assignedBoothNumber})
-                  </button>
-                  {res.status !== 'CONFIRMED_PAID' && (
+              {reservations.map((res, idx) => {
+                const canDelete = res.status === 'RESERVED_PENDING_APPROVAL' || res.status === 'CART';
+                return (
+                  <div key={res.id} className="inline-flex items-center">
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeletingResId(res.id);
-                      }}
-                      title="Delete this reservation"
-                      className="px-2 py-1.5 bg-rose-50 border border-l-0 border-rose-200 text-rose-600 hover:bg-rose-100 rounded-r-lg transition-colors"
+                      onClick={() => setActiveReservationIndex(idx)}
+                      className={`px-3.5 py-1.5 font-mono text-xs transition-all border ${
+                        canDelete ? 'rounded-l-lg' : 'rounded-lg'
+                      } ${
+                        idx === (activeReservationIndex ?? reservations.length - 1)
+                          ? 'bg-slate-900 text-white font-bold border-slate-900 shadow-sm'
+                          : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200/60'
+                      }`}
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {res.referenceId} ({res.assignedBoothNumber === 'Pending Assignment' ? 'Pending' : res.assignedBoothNumber})
                     </button>
-                  )}
-                </div>
-              ))}
+                    {canDelete && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingResId(res.id);
+                        }}
+                        title="Cancel this reservation"
+                        className="px-2 py-1.5 bg-rose-50 border border-l-0 border-rose-200 text-rose-600 hover:bg-rose-100 rounded-r-lg transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -335,7 +340,7 @@ function PermitContent() {
                   <h2 className="text-xl font-heading font-bold text-slate-900">
                     {currentRes.profile?.orgName || 'Exhibitor Organization'}
                   </h2>
-                  {!isConfirmedPaid && (
+                  {isPendingApproval && (
                     <button
                       onClick={() => setDeletingResId(currentRes.id)}
                       className="inline-flex items-center gap-1 text-xs text-rose-600 hover:text-rose-800 font-semibold bg-rose-50 px-2.5 py-1 rounded border border-rose-200 transition-colors"
