@@ -34,7 +34,7 @@ export function LegalPage({
           ))}
         </div>
         <div className="mt-12 border-t border-slate-200 pt-6 text-sm text-slate-500">
-          Questions? Email <a className="font-semibold text-[#1E4D38] hover:underline" href="mailto:exhibit@carnival.ng">exhibit@carnival.ng</a>.
+          Questions? Email <a className="font-semibold text-[#1E4D38] hover:underline" href="mailto:support@livestockcarnival.ng">support@livestockcarnival.ng</a>.
         </div>
       </article>
     </main>

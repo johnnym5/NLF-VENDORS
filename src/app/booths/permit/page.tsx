@@ -322,7 +322,7 @@ function PermitContent() {
                 <div>
                   <h4 className="font-bold text-sm text-red-900">Booth Allocation Revoked</h4>
                   <p className="text-xs text-red-700 mt-0.5">
-                    Your space allocation permit has been suspended by the Secretariat Committee. Please contact exhibit@carnival.ng or visit the Secretariat Accreditation Desk in Abuja.
+                    Your space allocation permit has been suspended by the Secretariat Committee. Please contact exhibit@livestockcarnival.ng or visit the Secretariat Accreditation Desk in Abuja.
                   </p>
                 </div>
               </div>

@@ -15,7 +15,7 @@ export default function CookiesPage() {
       { title: 'Essential authentication storage', content: <p>Supabase Auth stores session information in browser storage so you can remain signed in and securely access your account. This storage is needed for the Portal’s requested account and reservation services. Clearing browser storage or signing out may end your session.</p> },
       { title: 'Payment and third-party technologies', content: <p>When you open Paystack checkout or choose Google sign-in, those providers may use cookies or similar technologies under their own privacy and cookie notices. Their technologies support payment security, authentication, and fraud prevention. The Portal does not control third-party cookies.</p> },
       { title: 'Analytics and choices', content: <p>The Portal does not currently use advertising cookies or third-party analytics cookies. You can clear or block browser storage through your browser settings, but sign-in, checkout, or other requested features may then stop working as intended. If the Portal adds non-essential tracking in the future, this notice will be updated and any required consent will be requested.</p> },
-      { title: 'Contact', content: <p>Questions about browser storage or privacy? Email <a className="font-semibold text-[#1E4D38] hover:underline" href="mailto:exhibit@carnival.ng">exhibit@carnival.ng</a>.</p> },
+      { title: 'Contact', content: <p>Questions about browser storage or privacy? Email <a className="font-semibold text-[#1E4D38] hover:underline" href="mailto:support@livestockcarnival.ng">support@livestockcarnival.ng</a>.</p> },
     ]}
   />;
 }
