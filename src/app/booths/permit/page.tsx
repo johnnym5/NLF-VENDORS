@@ -64,11 +64,11 @@ function PermitContent() {
         throw new Error('Paystack public key is not configured. Add NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY and redeploy.');
       }
 
-      // Ensure Paystack Inline script is loaded
+      // Load Paystack InlineJS v2, which uses onSuccess/onCancel callbacks.
       if (typeof window !== 'undefined' && !(window as any).PaystackPop) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
-          script.src = 'https://js.paystack.co/v1/inline.js';
+          script.src = 'https://js.paystack.co/v2/inline.js';
           script.onload = resolve;
           script.onerror = () => reject(new Error('Failed to load Paystack payment gateway'));
           document.body.appendChild(script);
@@ -77,8 +77,8 @@ function PermitContent() {
 
       const resId = currentRes.id;
 
-      const handleSuccess = async function (response: any) {
-        const reference = response.reference || response.trxref;
+      const handleSuccess = async function (transaction: any) {
+        const reference = transaction.reference;
         if (!reference) {
           setPaymentError('Paystack did not return a payment reference. Contact support before trying again.');
           setPaying(false);
@@ -132,14 +132,12 @@ function PermitContent() {
             },
           ],
         },
-        callback: handleSuccess,
         onSuccess: handleSuccess,
-        onClose: handleClose,
         onCancel: handleClose,
       };
 
-      const handler = (window as any).PaystackPop.setup(paystackOptions);
-      handler.openIframe();
+      const paystack = new (window as any).PaystackPop();
+      paystack.newTransaction(paystackOptions);
     } catch (err: any) {
       console.error('Paystack initialization error:', err);
       setPaymentError(err.message || 'Failed to initialize Paystack gateway');
