@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { MapPin, Loader2, Clock, CheckCircle2, AlertTriangle, CreditCard, Plus, ArrowRight, ShieldCheck, DollarSign, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/lib/auth';
-import { useVendorReservations, updateReservationStatus, deleteBoothReservation } from '@/lib/supabase-queries';
+import { useVendorReservations, deleteBoothReservation } from '@/lib/supabase-queries';
+import { supabase } from '@/lib/supabase';
 import { formatNaira } from '@/lib/design-tokens';
 import { PAYSTACK_PUBLIC_KEY } from '@/lib/paystack';
 import { FadeIn } from '@/components/ui/FadeIn';
@@ -59,6 +60,10 @@ function PermitContent() {
     setPaymentError(null);
 
     try {
+      if (!PAYSTACK_PUBLIC_KEY) {
+        throw new Error('Paystack public key is not configured. Add NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY and redeploy.');
+      }
+
       // Ensure Paystack Inline script is loaded
       if (typeof window !== 'undefined' && !(window as any).PaystackPop) {
         await new Promise((resolve, reject) => {
@@ -72,18 +77,34 @@ function PermitContent() {
 
       const resId = currentRes.id;
 
-      const handleSuccess = function (response: any) {
-        const reference = response.reference || response.trxref || 'PST-SUCCESS';
-        updateReservationStatus(resId, 'CONFIRMED_PAID', reference)
-          .then(() => {
-            setShowPayModal(false);
-          })
-          .catch((err: any) => {
-            setPaymentError(err.message || 'Payment completed, but database status update failed.');
-          })
-          .finally(() => {
-            setPaying(false);
+      const handleSuccess = async function (response: any) {
+        const reference = response.reference || response.trxref;
+        if (!reference) {
+          setPaymentError('Paystack did not return a payment reference. Contact support before trying again.');
+          setPaying(false);
+          return;
+        }
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session?.access_token) throw new Error('Your session has expired. Please sign in and check your payment status.');
+
+          const { data, error } = await supabase.functions.invoke('verify-paystack-payment', {
+            body: { reference, reservationId: resId },
+            headers: { Authorization: `Bearer ${session.access_token}` },
           });
+          if (error) {
+            const details = await error.context?.json?.().catch(() => null);
+            throw new Error(details?.error || error.message || 'Paystack could not verify this payment.');
+          }
+          if (!data?.success) throw new Error(data?.error || 'Paystack could not verify this payment.');
+
+          setShowPayModal(false);
+        } catch (err: any) {
+          setPaymentError(err.message || 'Payment completed, but database status update failed.');
+        } finally {
+          setPaying(false);
+        }
       };
 
       const handleClose = function () {

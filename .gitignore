@@ -36,3 +36,6 @@ yarn-error.log*
 .idea
 .vscode
 .artifacts/
+
+# Supabase local link metadata and CLI state
+/supabase/.temp/

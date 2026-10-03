@@ -87,14 +87,34 @@ Example configuration:
 NEXT_PUBLIC_SUPABASE_URL=https://bqwohpjschaditdkrdra.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_HYjA-ZuSRTwNMTYBdsMfmA_Kvot5Ylg
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+PAYSTACK_SECRET_KEY=sk_live_your-paystack-secret-key
+NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY=pk_live_your-paystack-publishable-key
 ```
+
+Set `NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY` in Hostinger's Node.js app environment. Set `PAYSTACK_SECRET_KEY` only as a Supabase Edge Function secret. The public and secret keys must belong to the same live or test account. Enable at least one payment channel in the Paystack Dashboard; this project currently requests card, bank, USSD, and bank transfer at checkout.
+
+### 3a. Deploy payment verification
+
+Install and sign in to the [Supabase CLI](https://supabase.com/docs/guides/cli), then link this checkout to the Supabase project shown in `NEXT_PUBLIC_SUPABASE_URL` (`diimxnsmrhhouflgoqib`). From the repository root, run:
+
+```bash
+supabase login
+supabase link --project-ref diimxnsmrhhouflgoqib
+supabase secrets set PAYSTACK_SECRET_KEY=sk_live_your-paystack-secret-key
+supabase functions deploy verify-paystack-payment --no-verify-jwt
+```
+
+Use the matching `sk_test_...` secret instead if the site uses a test public key. Set the matching `NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY` in Hostinger's Node.js app environment and redeploy the app so Next.js builds with it. Never put the Paystack secret key in a `NEXT_PUBLIC_` variable or browser code. Do not deploy until the CLI is linked to the intended project.
+
+### 3b. Deploy the app on Hostinger
+
+Connect the Git repository to a Hostinger Node.js Web App. Configure the required `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY` environment variables in Hostinger before building. Set `PAYSTACK_SECRET_KEY` only in Supabase Function secrets. Use `npm install` for install, `npm run build` for build, and `npm run start` for startup; the app listens on the port provided by Hostinger. Redeploy after changing environment variables because `NEXT_PUBLIC_*` values are embedded during the build.
 
 ### 4. Setup Database
 Run `supabase_schema.sql` in your Supabase SQL Editor.
 
 ### 5. Seed Booth Tiers
-Initialize the database with default exhibition tiers:
-Navigate to [https://vendors.livestockcarnival.ng/setup](https://vendors.livestockcarnival.ng/setup) or `http://localhost:3000/setup` after logging in as `admin@nlf.com`.
+Initialize the database with default exhibition tiers by visiting `/setup` after signing in with an admin account.
 
 ---
 

@@ -1,8 +1,11 @@
 export const PAYSTACK_PUBLIC_KEY =
-  process.env.NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY || 'pk_live_36281f730d465d288b16202955065a56b2200248';
+  process.env.NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY || '';
 
 export async function verifyPaystackTransaction(reference: string) {
   const secretKey = process.env.PAYSTACK_SECRET_KEY || '';
+  if (!secretKey) {
+    throw new Error('Paystack secret key is not configured on the server.');
+  }
 
   const res = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
     headers: {
