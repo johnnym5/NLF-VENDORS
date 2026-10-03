@@ -103,12 +103,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 py-6 px-4">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-slate-500">
-          <p>© 2026 National Livestock Festival — Vendor Portal</p>
-        </div>
-      </footer>
     </div>
   );
 }

@@ -1,0 +1,26 @@
+import { Metadata } from 'next';
+import { BulletList, LegalPage } from '@/components/legal/LegalPage';
+
+export const metadata: Metadata = {
+  title: 'Terms of Use | NLF 2026 Vendor Portal',
+  description: 'Terms for using the National Livestock Festival 2026 Vendor Portal.',
+};
+
+export default function TermsPage() {
+  return <LegalPage
+    eyebrow="Legal"
+    title="Terms of Use"
+    intro={<>These terms govern your access to and use of the National Livestock Festival 2026 Vendor Portal (the “Portal”), including vendor registration, exhibition booth applications, payments, permits, and related services. By creating an account or using the Portal, you agree to these terms.</>}
+    sections={[
+      { title: 'About the Portal', content: <p>The Portal supports exhibitor applications and booth administration for the National Livestock Festival 2026 in Abuja. The event is presented by the National Livestock Festival in collaboration with the Federal Ministry of Livestock Development. Event admission, exhibition, and participation remain subject to organizer approval and any event-specific requirements communicated to you.</p> },
+      { title: 'Accounts and accurate information', content: <><p>You must provide accurate, current business and contact information, keep your sign-in credentials secure, and promptly correct information that changes. You are responsible for activity carried out through your account. Contact us promptly if you suspect unauthorized account use.</p><p>Creating an application does not itself guarantee approval, booth allocation, or event participation. The Secretariat may request additional information and may approve, decline, or revoke an application where required for event administration, safety, eligibility, or compliance.</p></> },
+      { title: 'Applications, prices, and booth allocation', content: <p>Booth descriptions, availability, inclusions, and prices are displayed in the Portal and may be updated by the Secretariat. Your payable amount is the amount shown for your reservation at checkout. A booth is not treated as paid until the payment has been confirmed. Booth placement and final allocation are administered by the Secretariat; a requested or displayed booth number may remain provisional until confirmed.</p> },
+      { title: 'Payments', content: <p>Payments are processed through Paystack. The Portal does not ask you to enter or store full card credentials. Do not share your card PIN, one-time password, or banking password with Portal staff. A payment reference or a browser success message alone is not proof of settlement; the Portal confirms payment after server-side verification. If you are charged but your reservation does not update, contact <a className="font-semibold text-[#1E4D38] hover:underline" href="mailto:exhibit@carnival.ng">exhibit@carnival.ng</a> with your reservation and Paystack references.</p> },
+      { title: 'Cancellation and refunds', content: <p>Cancellation and refund requests are reviewed by the event organizer under the event’s applicable booking terms, announcements, and applicable law. A payment processor does not decide whether your booth fee is refundable. Submit requests promptly to <a className="font-semibold text-[#1E4D38] hover:underline" href="mailto:exhibit@carnival.ng">exhibit@carnival.ng</a>, including your reservation ID and payment reference. See our <a className="font-semibold text-[#1E4D38] hover:underline" href="/refunds">Refunds &amp; Cancellations</a> page. Any approved refund is processed through the payment provider and may take additional time to appear, depending on the payment method and financial institution.</p> },
+      { title: 'Acceptable use', content: <BulletList><li>Use the Portal only for lawful event-related purposes and only for applications you are authorized to submit.</li><li>Do not impersonate another person or business, submit misleading information, interfere with the Portal, probe its security, or attempt to access another user’s account or data.</li><li>Do not use the Portal to upload unlawful, harmful, or infringing content.</li></BulletList> },
+      { title: 'Availability and changes', content: <p>We may update, suspend, or discontinue parts of the Portal for maintenance, security, operational, or event-related reasons. We will take reasonable steps to keep information available, but do not guarantee uninterrupted or error-free access.</p> },
+      { title: 'Liability and applicable law', content: <p>Nothing in these terms limits rights or remedies that cannot be excluded under applicable law. To the extent permitted by law, the Portal is provided for event administration, and we are not responsible for interruptions or failures caused by third-party networks, payment providers, or services outside our reasonable control. These terms are governed by the laws of the Federal Republic of Nigeria, subject to any mandatory legal protections that apply to you.</p> },
+      { title: 'Changes and contact', content: <p>We may revise these terms when the Portal or event requirements change. The updated date above identifies the latest revision. For questions, contact <a className="font-semibold text-[#1E4D38] hover:underline" href="mailto:exhibit@carnival.ng">exhibit@carnival.ng</a>.</p> },
+    ]}
+  />;
+}

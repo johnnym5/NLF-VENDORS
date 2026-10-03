@@ -1,5 +1,6 @@
 import { Inter, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { AuthProvider } from '@/lib/auth';
+import { SiteFooter } from '@/components/SiteFooter';
 import './globals.css';
 import { Metadata } from 'next';
 
@@ -55,6 +56,7 @@ export default function RootLayout({
       <body className="font-sans antialiased bg-[#FBFBFA] text-gray-900 min-h-screen">
         <AuthProvider>
           {children}
+          <SiteFooter />
         </AuthProvider>
       </body>
     </html>
