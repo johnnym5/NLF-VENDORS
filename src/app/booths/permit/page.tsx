@@ -163,7 +163,7 @@ function PermitContent() {
 
   if (authLoading || resLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#FBFBFA] space-y-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-transparent space-y-4">
         <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
         <p className="text-sm text-slate-600 font-medium">Loading digital permit passes...</p>
       </div>
@@ -172,7 +172,7 @@ function PermitContent() {
 
   if (!user || reservations.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA] flex-col space-y-4 px-4 text-center">
+      <div className="min-h-screen flex items-center justify-center bg-transparent flex-col space-y-4 px-4 text-center">
         <p className="text-slate-600 text-lg font-heading font-medium">No active booth reservations found.</p>
         <p className="text-slate-400 text-sm max-w-sm">Reserve your space at the National Livestock Festival 2026.</p>
         <Button onClick={() => router.push('/booths')} className="bg-[#1E4D38] hover:bg-[#153627] text-white">
@@ -190,7 +190,7 @@ function PermitContent() {
   const deletingTarget = reservations.find((r) => r.id === deletingResId);
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-transparent py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">
 
         {/* Action Header Banner */}
@@ -605,7 +605,7 @@ export default function PermitPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA]">
+        <div className="min-h-screen flex items-center justify-center bg-transparent">
           <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
         </div>
       }

@@ -18,7 +18,7 @@ export function LegalPage({
   sections: LegalSection[];
 }) {
   return (
-    <main className="min-h-[70vh] bg-[#FBFBFA] px-4 py-12 sm:py-16">
+    <main className="min-h-[70vh] bg-transparent px-4 py-12 sm:py-16">
       <article className="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white px-6 py-8 shadow-sm sm:px-12 sm:py-12">
         <Link href="/" className="text-sm font-semibold text-[#1E4D38] hover:underline">NLF 2026 Vendor Portal</Link>
         <p className="mt-8 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{eyebrow}</p>

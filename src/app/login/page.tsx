@@ -66,7 +66,7 @@ export default function LoginPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA]">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
       </div>
     );
@@ -75,14 +75,14 @@ export default function LoginPage() {
   // If already logged in, show spinner while redirect happens
   if (user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA]">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] flex flex-col items-center justify-center px-4 py-12">
+    <div className="min-h-screen bg-transparent flex flex-col items-center justify-center px-4 py-12">
       <FadeIn>
         <div className="w-full max-w-md">
           {/* Back link */}

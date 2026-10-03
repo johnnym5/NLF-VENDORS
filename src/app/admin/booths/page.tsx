@@ -232,7 +232,7 @@ export default function AdminDashboardPage() {
     .reduce((sum, r) => sum + r.totalAmount, 0);
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-transparent py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-8">
 
         {/* Dashboard Title Bar */}

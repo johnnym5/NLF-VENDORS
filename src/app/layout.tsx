@@ -54,7 +54,7 @@ export default function RootLayout({
         <link rel="icon" href="/logo.jpeg" />
         <link rel="apple-touch-icon" href="/logo.jpeg" />
       </head>
-      <body className="font-sans antialiased bg-[#FBFBFA] text-gray-900 min-h-screen">
+      <body className="font-sans antialiased bg-transparent text-gray-900 min-h-screen">
         <AuthProvider>
           <SiteHeader />
           {children}

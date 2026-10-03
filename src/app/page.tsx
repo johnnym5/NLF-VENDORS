@@ -9,7 +9,7 @@ export default function LandingPage() {
   const { tiers, loading, error } = useTiers();
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] flex flex-col">
+    <div className="min-h-screen bg-transparent flex flex-col">
       {/* Hero */}
       <section className="flex-1 flex flex-col items-center justify-center px-4 pt-20 pb-16 text-center">
         <div className="animate-fade-in">

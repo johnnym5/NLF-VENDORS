@@ -146,7 +146,7 @@ function CheckoutContent() {
 
   if (authLoading || tiersLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA]">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
       </div>
     );
@@ -154,7 +154,7 @@ function CheckoutContent() {
 
   if (!selectedTier) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA] p-4">
+      <div className="min-h-screen flex items-center justify-center bg-transparent p-4">
         <div className="text-center">
           <p className="text-slate-600 mb-4">No tier selected or tier not found.</p>
           <Button onClick={() => router.push('/booths')}>Browse Exhibition Booths</Button>
@@ -164,7 +164,7 @@ function CheckoutContent() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-transparent py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-2xl mx-auto">
         <Button
           variant="outline"
@@ -496,7 +496,7 @@ function CheckoutContent() {
 export default function CheckoutPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-[#FBFBFA]">
+      <div className="min-h-screen flex items-center justify-center bg-transparent">
         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
       </div>
     }>

@@ -20,7 +20,7 @@ export default function BoothsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FBFBFA] py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-transparent py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
           <p className="text-sm text-slate-500 uppercase tracking-wider mb-2 font-medium">
