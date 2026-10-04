@@ -95,6 +95,7 @@ export function useReservations() {
           assignedBoothNumber: r.assigned_booth_number || 'Pending Assignment',
           vendorSequence: r.vendor_sequence,
           paymentReference: r.payment_reference,
+          paymentMethod: r.payment_method || undefined,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
           profile: r.profile ? {
@@ -186,6 +187,7 @@ export function useVendorReservations(userId: string | undefined) {
           assignedBoothNumber: r.assigned_booth_number || 'Pending Assignment',
           vendorSequence: r.vendor_sequence,
           paymentReference: r.payment_reference,
+          paymentMethod: r.payment_method || undefined,
           createdAt: r.created_at,
           updatedAt: r.updated_at,
           profile: r.profile ? {

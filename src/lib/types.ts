@@ -61,6 +61,7 @@ export interface BoothReservation {
   assignedBoothNumber: string;
   vendorSequence?: number;
   paymentReference?: string;
+  paymentMethod?: 'PAYSTACK' | 'BANK_TRANSFER';
   createdAt: string;
   updatedAt: string;
   profile?: UserProfile;

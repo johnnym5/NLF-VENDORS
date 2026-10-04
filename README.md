@@ -32,11 +32,13 @@ From initial booth discovery and tier selection to automated stall assignment an
   * Veterinary Tech & Pharmaceuticals
 * **Secure Authentication:** Supabase-powered email, password, and Google OAuth authentication for vendor accounts.
 * **Checkout & Booking Pipeline:** Order processing with payment reference capture and real-time inventory decrement.
+* **Manual Bank Transfer:** Vendors can pay the exact approved reservation total by transfer and see live confirmation status.
 * **Digital Exhibition Permit & QR Pass:** Real-time digital booth pass featuring assigned booth numbers (e.g., `ST-01`, `PV-04`), official status badges, and scannable QR verification for on-site accreditation desks.
 
 ### 🛡️ Administration & Secretariat Portal (`/admin/booths`)
 * **Real-Time Inventory Control:** Monitor booth stock across tiers, adjust unit prices, and lock/unlock tiers to halt or release booking quotas.
 * **Order Oversight & Directory:** Comprehensive database of vendor applications, payment references, and company contacts.
+* **Transfer Account & Review Queue:** Configure up to five event bank accounts and confirm, leave pending, or reject manual transfer submissions.
 * **Automated & Manual Booth Allocation:** Assign designated plot numbers or modify placements directly.
 * **Revocation & Compliance:** Formal permit revocation workflow with mandatory reason logging and immediate vendor-side status sync.
 
@@ -93,16 +95,19 @@ NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY=pk_live_your-paystack-publishable-key
 
 Set `NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY` in Hostinger's Node.js app environment. Set `PAYSTACK_SECRET_KEY` only as a Supabase Edge Function secret. The public and secret keys must belong to the same live or test account. Enable at least one payment channel in the Paystack Dashboard; this project currently requests card, bank, USSD, and bank transfer at checkout.
 
-### 3a. Deploy payment verification
+### 3a. Apply database migrations and deploy payment verification
 
 Install and sign in to the [Supabase CLI](https://supabase.com/docs/guides/cli), then link this checkout to the Supabase project shown in `NEXT_PUBLIC_SUPABASE_URL` (`diimxnsmrhhouflgoqib`). From the repository root, run:
 
 ```bash
 supabase login
 supabase link --project-ref diimxnsmrhhouflgoqib
+supabase db push
 supabase secrets set PAYSTACK_SECRET_KEY=sk_live_your-paystack-secret-key
 supabase functions deploy verify-paystack-payment --no-verify-jwt
 ```
+
+The manual bank transfer workflow is installed by the additive migration in `supabase/migrations/`. The migration creates bank account and transfer submission tables, access policies, and atomic payment review functions. Add or change the event bank accounts in **Admin → Booths → Manual Transfer Bank Accounts** after deployment.
 
 Use the matching `sk_test_...` secret instead if the site uses a test public key. Set the matching `NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY` in Hostinger's Node.js app environment and redeploy the app so Next.js builds with it. Never put the Paystack secret key in a `NEXT_PUBLIC_` variable or browser code. Do not deploy until the CLI is linked to the intended project.
 

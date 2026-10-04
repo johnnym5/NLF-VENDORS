@@ -92,23 +92,16 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'The Paystack payer email does not match the signed-in account.' }, 400);
   }
 
-  const { data: updatedRows, error: updateError } = await admin
-    .from('booth_reservations')
-    .update({
-      status: 'CONFIRMED_PAID',
-      payment_reference: reference,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', reservationId)
-    .eq('user_id', user.id)
-    .neq('status', 'CONFIRMED_PAID')
-    .select('id');
+  const { error: settlementError } = await admin.rpc('settle_booth_payment', {
+    p_reservation_id: reservationId,
+    p_payment_reference: reference,
+    p_payment_method: 'PAYSTACK',
+  });
 
-  if (updateError) {
-    console.error('Verified payment reservation update failed:', updateError.message);
-    return jsonResponse({ error: 'Payment was verified, but reservation update failed. Contact support with your payment reference.' }, 500);
+  if (settlementError) {
+    console.error('Verified Paystack settlement failed:', settlementError.message);
+    return jsonResponse({ error: settlementError.message || 'Payment was verified, but reservation update failed. Contact support with your payment reference.' }, 409);
   }
-  if (!updatedRows?.length) return jsonResponse({ error: 'Reservation status changed during verification. Refresh and check its payment status.' }, 409);
 
   return jsonResponse({ success: true });
 });

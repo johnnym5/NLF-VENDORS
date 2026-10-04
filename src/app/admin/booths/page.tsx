@@ -18,6 +18,7 @@ import {
   deleteBoothTier,
 } from '@/lib/supabase-queries';
 import { adminCreateVendorAccount } from '@/lib/admin-actions';
+import { ManualTransferManagement } from '@/components/admin/ManualTransferManagement';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -141,6 +142,10 @@ export default function AdminDashboardPage() {
 
   const handleStatusChange = async (reservationId: string, newStatus: ReservationStatus) => {
     try {
+      if (newStatus === 'CONFIRMED_PAID') {
+        alert('Use the manual transfer review or verify the Paystack payment before marking this reservation paid.');
+        return;
+      }
       await updateReservationStatus(reservationId, newStatus);
     } catch (err: any) {
       alert(err.message || 'Failed to update status');
@@ -413,6 +418,8 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
+        <ManualTransferManagement />
+
         {/* RESERVATIONS MANAGEMENT DIRECTORY */}
         <div className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -444,7 +451,7 @@ export default function AdminDashboardPage() {
                 <option value="all">All Statuses</option>
                 <option value="RESERVED_PENDING_APPROVAL">Pending Approval</option>
                 <option value="APPROVED_PENDING_PAYMENT">Approved (Pending Payment)</option>
-                <option value="CONFIRMED_PAID">Confirmed & Paid</option>
+                <option value="CONFIRMED_PAID" disabled>Confirmed & Paid (verified payment only)</option>
                 <option value="REVOKED">Revoked</option>
               </select>
             </div>
@@ -527,7 +534,7 @@ export default function AdminDashboardPage() {
                       >
                         <option value="RESERVED_PENDING_APPROVAL">Pending Approval</option>
                         <option value="APPROVED_PENDING_PAYMENT">Approved (Awaiting Payment)</option>
-                        <option value="CONFIRMED_PAID">Confirmed & Paid</option>
+                        <option value="CONFIRMED_PAID" disabled>Confirmed & Paid (verified payment only)</option>
                         <option value="REVOKED">Revoked</option>
                       </select>
                     </td>

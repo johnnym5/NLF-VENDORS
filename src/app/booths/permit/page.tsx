@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, Loader2, Clock, CheckCircle2, AlertTriangle, CreditCard, Plus, ArrowRight, ShieldCheck, DollarSign, Trash2 } from 'lucide-react';
+import { MapPin, Loader2, Clock, CheckCircle2, AlertTriangle, CreditCard, Plus, Landmark, Trash2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/lib/auth';
 import { useVendorReservations, deleteBoothReservation } from '@/lib/supabase-queries';
@@ -15,6 +15,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ReservationStatus } from '@/lib/types';
+import { ManualTransferAccount, submitManualTransfer, useManualTransferAccounts, useManualTransferSubmissions } from '@/lib/manual-transfers';
 
 function PermitContent() {
   const router = useRouter();
@@ -25,6 +26,11 @@ function PermitContent() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [paying, setPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentView, setPaymentView] = useState<'methods' | 'transfer'>('methods');
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
+  const [transferReady, setTransferReady] = useState(false);
+  const [submittingTransfer, setSubmittingTransfer] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
 
   // Deletion modal state
   const [deletingResId, setDeletingResId] = useState<string | null>(null);
@@ -53,6 +59,46 @@ function PermitContent() {
   const currentRes = activeReservationIndex !== null && reservations[activeReservationIndex]
     ? reservations[activeReservationIndex]
     : reservations[reservations.length - 1];
+  const isApprovedForTransfer = currentRes?.status === 'APPROVED_PENDING_PAYMENT';
+  const { accounts: manualTransferAccounts, loading: transferAccountsLoading, error: transferAccountsError } = useManualTransferAccounts(
+    Boolean(user && isApprovedForTransfer)
+  );
+  const { latest: latestTransfer, refresh: refreshTransfers } = useManualTransferSubmissions(
+    currentRes?.id,
+    Boolean(user && currentRes)
+  );
+
+  useEffect(() => {
+    setTransferReady(false);
+    if (!showPayModal || paymentView !== 'transfer' || !selectedBankAccountId) return;
+    const timer = window.setTimeout(() => setTransferReady(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [showPayModal, paymentView, selectedBankAccountId]);
+
+  useEffect(() => {
+    setSelectedBankAccountId(null);
+    setPaymentView('methods');
+    setTransferError(null);
+  }, [currentRes?.id]);
+
+  const selectedBankAccount = manualTransferAccounts.find((account) => account.id === selectedBankAccountId);
+
+  const handleSubmitManualTransfer = async () => {
+    if (!currentRes || !selectedBankAccountId) return;
+    setSubmittingTransfer(true);
+    setTransferError(null);
+    try {
+      await submitManualTransfer(currentRes.id, selectedBankAccountId);
+      await refreshTransfers();
+      setShowPayModal(false);
+      setPaymentView('methods');
+      setSelectedBankAccountId(null);
+    } catch (err: any) {
+      setTransferError(err.message || 'Could not submit your transfer confirmation.');
+    } finally {
+      setSubmittingTransfer(false);
+    }
+  };
 
   const handlePayWithPaystack = async () => {
     if (!currentRes || !user) return;
@@ -81,6 +127,7 @@ function PermitContent() {
         const reference = transaction.reference;
         if (!reference) {
           setPaymentError('Paystack did not return a payment reference. Contact support before trying again.');
+          setPaymentView('methods');
           setPaying(false);
           return;
         }
@@ -99,9 +146,11 @@ function PermitContent() {
           }
           if (!data?.success) throw new Error(data?.error || 'Paystack could not verify this payment.');
 
+          await refreshTransfers();
           setShowPayModal(false);
         } catch (err: any) {
           setPaymentError(err.message || 'Payment completed, but database status update failed.');
+          setPaymentView('methods');
         } finally {
           setPaying(false);
         }
@@ -109,6 +158,8 @@ function PermitContent() {
 
       const handleClose = function () {
         setPaying(false);
+        setPaymentError('Paystack checkout was closed. You can try Paystack again or transfer manually.');
+        setPaymentView('methods');
       };
 
       const paystackOptions = {
@@ -141,6 +192,7 @@ function PermitContent() {
     } catch (err: any) {
       console.error('Paystack initialization error:', err);
       setPaymentError(err.message || 'Failed to initialize Paystack gateway');
+      setPaymentView('methods');
       setPaying(false);
     }
   };
@@ -186,6 +238,8 @@ function PermitContent() {
   const isApprovedPendingPayment = currentRes.status === 'APPROVED_PENDING_PAYMENT';
   const isConfirmedPaid = currentRes.status === 'CONFIRMED_PAID';
   const isRevoked = currentRes.status === 'REVOKED';
+  const transferProcessing = latestTransfer?.status === 'PROCESSING' && isApprovedPendingPayment;
+  const transferNotReceived = latestTransfer?.status === 'NOT_RECEIVED' && isApprovedPendingPayment;
 
   const deletingTarget = reservations.find((r) => r.id === deletingResId);
 
@@ -265,29 +319,41 @@ function PermitContent() {
 
         {isApprovedPendingPayment && (
           <FadeIn delay={0}>
-            <div className="mb-6 bg-[#E8F3ED] border-2 border-[#1E4D38] rounded-xl p-6 shadow-md">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <span className="inline-block px-2.5 py-0.5 rounded text-xs font-bold bg-[#1E4D38] text-white mb-2 uppercase tracking-wider">
-                    Application Approved
-                  </span>
-                  <h4 className="font-bold text-slate-900 text-lg">Your Booth Application Has Been Accepted!</h4>
-                  <p className="text-xs text-slate-600 mt-1">
-                    Base Space Rate: <span className="font-semibold">{formatNaira(currentRes.basePrice)}</span>
-                    {currentRes.additionalFees > 0 && (
-                      <> + Custom Surcharge: <span className="font-semibold">{formatNaira(currentRes.additionalFees)}</span></>
-                    )}
-                  </p>
-                  <p className="text-base font-bold text-slate-900 mt-1">
-                    Total Amount Due: {formatNaira(currentRes.totalAmount)}
-                  </p>
+            <div className="mb-6 space-y-3">
+              {transferProcessing && (
+                <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-5" role="status">
+                  <p className="font-bold text-amber-900">Transfer processing — awaiting confirmation</p>
+                  <p className="mt-1 text-sm text-amber-800">The Secretariat is checking your bank transfer. We’ll update your permit as soon as it is reviewed.</p>
                 </div>
-                <Button
-                  onClick={() => setShowPayModal(true)}
-                  className="bg-[#1E4D38] hover:bg-[#153627] text-white font-bold text-sm px-6 py-3.5 shadow-md flex-shrink-0"
-                >
-                  Pay for Booth ({formatNaira(currentRes.totalAmount)}) &rarr;
-                </Button>
+              )}
+              {transferNotReceived && (
+                <div className="rounded-xl border-2 border-rose-300 bg-rose-50 p-5" role="alert">
+                  <p className="font-bold text-rose-900">Payment not received</p>
+                  <p className="mt-1 text-sm text-rose-800">The Secretariat could not confirm this transfer. You can try Paystack or submit a new transfer confirmation.</p>
+                </div>
+              )}
+              <div className="rounded-xl border-2 border-[#1E4D38] bg-[#E8F3ED] p-6 shadow-md">
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                  <div>
+                    <span className="mb-2 inline-block rounded bg-[#1E4D38] px-2.5 py-0.5 text-xs font-bold uppercase tracking-wider text-white">Application Approved</span>
+                    <h4 className="text-lg font-bold text-slate-900">Your Booth Application Has Been Accepted!</h4>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Base Space Rate: <span className="font-semibold">{formatNaira(currentRes.basePrice)}</span>
+                      {currentRes.additionalFees > 0 && <> + Custom Surcharge: <span className="font-semibold">{formatNaira(currentRes.additionalFees)}</span></>}
+                    </p>
+                    <p className="mt-1 text-base font-bold text-slate-900">Total Amount Due: {formatNaira(currentRes.totalAmount)}</p>
+                  </div>
+                  {transferProcessing ? (
+                    <span className="shrink-0 rounded-lg bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900">Transfer Processing</span>
+                  ) : (
+                    <Button
+                      onClick={() => { setPaymentError(null); setTransferError(null); setPaymentView('methods'); setShowPayModal(true); }}
+                      className="shrink-0 bg-[#1E4D38] px-6 py-3.5 text-sm font-bold text-white shadow-md hover:bg-[#153627]"
+                    >
+                      {transferNotReceived ? 'Try Payment Again' : `Pay for Booth (${formatNaira(currentRes.totalAmount)})`} &rarr;
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </FadeIn>
@@ -312,6 +378,18 @@ function PermitContent() {
               </div>
             </div>
           </FadeIn>
+        )}
+
+        {isConfirmedPaid && currentRes.paymentMethod === 'BANK_TRANSFER' && (
+          <div className="mb-6 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-5 shadow-sm" role="status">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" />
+              <div>
+                <p className="font-bold text-emerald-900">Bank transfer received</p>
+                <p className="mt-1 text-sm text-emerald-800">The Secretariat confirmed your payment. Your permit is active.</p>
+              </div>
+            </div>
+          </div>
         )}
 
         {isRevoked && (
@@ -517,43 +595,101 @@ function PermitContent() {
               <Alert variant="error">{paymentError}</Alert>
             )}
 
-            <div className="space-y-3">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wide block mb-1">
-                Paystack Live Secure Gateway
-              </label>
+            {paymentView === 'methods' ? (
+              <div className="space-y-4">
+                <p className="text-sm font-semibold text-slate-700">Choose how you want to pay.</p>
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-[#1E4D38] p-2.5 text-white"><CreditCard size={20} /></div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">Pay securely with Paystack</p>
+                      <p className="text-xs text-slate-500">Card, bank, USSD and other available methods</p>
+                    </div>
+                  </div>
+                  <Button className="mt-4 w-full bg-[#1E4D38] font-bold text-white hover:bg-[#153627]" onClick={handlePayWithPaystack} disabled={paying}>
+                    {paying ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Connecting to Paystack…</> : `Pay ${formatNaira(currentRes.totalAmount)} via Paystack`}
+                  </Button>
+                </div>
 
-              <div className="p-4 border-2 border-[#1E4D38] bg-[#1E4D38]/5 rounded-xl flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-[#1E4D38] text-white">
-                    <CreditCard size={20} />
+                {transferAccountsLoading ? (
+                  <p className="text-sm text-slate-500">Checking manual transfer availability…</p>
+                ) : transferAccountsError ? (
+                  <Alert variant="error">Could not load manual transfer accounts. You can still retry Paystack or contact the Secretariat.</Alert>
+                ) : manualTransferAccounts.length > 0 ? (
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="rounded-lg bg-amber-600 p-2.5 text-white"><Landmark size={20} /></div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">Transfer manually</p>
+                        <p className="text-xs text-slate-500">Send the exact amount to an event bank account</p>
+                      </div>
+                    </div>
+                    <Button variant="outline" className="mt-4 w-full" onClick={() => { setPaymentError(null); setTransferError(null); setPaymentView('transfer'); }}>
+                      Transfer manually
+                    </Button>
                   </div>
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">Paystack Checkout Gateway</p>
-                    <p className="text-xs text-slate-500">Naira Debit Cards, Bank Transfer, USSD, Apple Pay</p>
-                  </div>
+                ) : (
+                  <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">Manual transfer is not available yet. Please use Paystack or contact the Secretariat.</p>
+                )}
+
+                <div className="border-t border-slate-100 pt-4 text-right">
+                  <Button variant="outline" onClick={() => setShowPayModal(false)} disabled={paying}>Cancel</Button>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="space-y-5">
+                <Button variant="ghost" size="sm" onClick={() => { setPaymentView('methods'); setTransferError(null); }} disabled={submittingTransfer}>
+                  ← Back to payment methods
+                </Button>
+                <div>
+                  <h3 className="font-semibold text-slate-900">Choose a bank account</h3>
+                  <p className="mt-1 text-xs text-slate-500">Select the account you transferred to. Transfer exactly {formatNaira(currentRes.totalAmount)}.</p>
+                </div>
 
-            <div className="pt-4 flex gap-3 border-t border-slate-100">
-              <Button variant="outline" className="flex-1" onClick={() => setShowPayModal(false)} disabled={paying}>
-                Cancel
-              </Button>
-              <Button
-                className="flex-1 bg-[#1E4D38] hover:bg-[#153627] text-white font-bold"
-                onClick={handlePayWithPaystack}
-                disabled={paying}
-              >
-                {paying ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting to Paystack...
-                  </>
-                ) : (
-                  `Pay ${formatNaira(currentRes.totalAmount)} via Paystack`
+                {transferError && <Alert variant="error">{transferError}</Alert>}
+                <div className="space-y-2">
+                  {manualTransferAccounts.map((account: ManualTransferAccount) => (
+                    <div key={account.id} className={`overflow-hidden rounded-xl border ${selectedBankAccountId === account.id ? 'border-[#1E4D38] ring-1 ring-[#1E4D38]' : 'border-slate-200'}`}>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedBankAccountId(account.id); setTransferError(null); }}
+                        className="flex w-full items-center justify-between bg-white p-4 text-left hover:bg-slate-50"
+                        aria-expanded={selectedBankAccountId === account.id}
+                      >
+                        <span>
+                          <span className="block font-semibold text-slate-900">{account.bankName}</span>
+                          <span className="text-xs text-slate-500">{account.accountName}</span>
+                        </span>
+                        <span className="text-sm font-bold text-[#1E4D38]">{selectedBankAccountId === account.id ? 'Selected' : 'Choose'}</span>
+                      </button>
+                      {selectedBankAccountId === account.id && (
+                        <div className="border-t border-slate-100 bg-slate-50 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Account Number</p>
+                          <p className="mt-1 font-mono text-xl font-bold tracking-wider text-slate-900">{account.accountNumber}</p>
+                          <p className="mt-2 text-xs text-slate-600">Account name: <strong>{account.accountName}</strong></p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {selectedBankAccount && (
+                  <div className="space-y-3 border-t border-slate-100 pt-4">
+                    {transferReady ? (
+                      <Button className="w-full bg-[#1E4D38] font-bold text-white hover:bg-[#153627]" onClick={() => void handleSubmitManualTransfer()} disabled={submittingTransfer}>
+                        {submittingTransfer ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting…</> : "I've transferred the money"}
+                      </Button>
+                    ) : (
+                      <p className="text-center text-sm text-slate-500" role="status">The transfer confirmation button will be available in a few seconds…</p>
+                    )}
+                    <p className="text-center text-[11px] leading-5 text-slate-400">Only submit after you have sent the exact amount. The Secretariat will verify the payment before activating your permit.</p>
+                  </div>
                 )}
-              </Button>
-            </div>
+                <div className="border-t border-slate-100 pt-4 text-right">
+                  <Button variant="outline" onClick={() => setShowPayModal(false)} disabled={submittingTransfer}>Cancel</Button>
+                </div>
+              </div>
+            )}
           </div>
         </Modal>
 
