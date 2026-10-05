@@ -644,6 +644,7 @@ function PermitContent() {
                 <div>
                   <h3 className="font-semibold text-slate-900">Choose a bank account</h3>
                   <p className="mt-1 text-xs text-slate-500">Select the account you transferred to. Transfer exactly {formatNaira(currentRes.totalAmount)}.</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">Please contact us on WhatsApp or call us on: <a className="font-semibold text-[#1E4D38] underline" href="https://wa.me/2349014740776">+2349014740776</a> before payment and after you have sent it, for quicker verification and response. Thank you.</p>
                 </div>
 
                 {transferError && <Alert variant="error">{transferError}</Alert>}
