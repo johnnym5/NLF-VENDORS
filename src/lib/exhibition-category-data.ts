@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { ApplicationField, ApplicationFieldType } from '@/lib/types';
 import { supabase } from '@/lib/supabase';
 
@@ -19,6 +19,7 @@ function mapField(row: any): ApplicationField {
 }
 
 export function useApplicationFields(categoryId?: string, includeInactive = false) {
+  const hookId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [fields, setFields] = useState<ApplicationField[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,11 +45,14 @@ export function useApplicationFields(categoryId?: string, includeInactive = fals
     setLoading(true);
     void refresh();
     if (!categoryId) return;
-    const channel = supabase.channel(`exhibition-fields-${categoryId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'exhibition_application_fields', filter: `category_id=eq.${categoryId}` }, () => void refresh())
-      .subscribe();
+    // Multiple parts of the admin page read these fields at once. Give each
+    // hook instance its own channel topic so Supabase never reuses a topic
+    // while another component is already subscribed to it.
+    const channel = supabase.channel(`exhibition-fields-${categoryId}-${hookId}`);
+    channel.on('postgres_changes', { event: '*', schema: 'public', table: 'exhibition_application_fields', filter: `category_id=eq.${categoryId}` }, () => void refresh());
+    channel.subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [categoryId, refresh]);
+  }, [categoryId, refresh, hookId]);
 
   return { fields, loading, error, refresh };
 }
