@@ -642,19 +642,36 @@ export async function toggleTierLock(tierId: string, currentLockState: boolean) 
 
 export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' | 'isLocked'>) {
   const tierId = 'tier_' + Math.random().toString(36).substring(2, 10);
-  const { error } = await supabase.from('booth_tiers').insert({
+  const camelCaseInsert = await supabase.from('booth_tiers').insert({
     id: tierId,
     category_id: tierData.categoryId,
     name: tierData.name,
     dimension: tierData.dimension,
-    color_code: tierData.colorCode,
+    colorCode: tierData.colorCode,
     price: tierData.price,
     stock: tierData.stock,
-    initial_stock: tierData.initialStock,
-    is_locked: false,
+    initialStock: tierData.initialStock,
+    isLocked: false,
     perks: tierData.perks,
+    updatedAt: new Date().toISOString(),
   });
-  if (error) throw error;
+  if (camelCaseInsert.error) {
+    // Support databases initialized from supabase_schema.sql, which uses the
+    // snake_case names, as well as the existing linked project schema.
+    const snakeCaseInsert = await supabase.from('booth_tiers').insert({
+      id: tierId,
+      category_id: tierData.categoryId,
+      name: tierData.name,
+      dimension: tierData.dimension,
+      color_code: tierData.colorCode,
+      price: tierData.price,
+      stock: tierData.stock,
+      initial_stock: tierData.initialStock,
+      is_locked: false,
+      perks: tierData.perks,
+    });
+    if (snakeCaseInsert.error) throw camelCaseInsert.error;
+  }
   return tierId;
 }
 

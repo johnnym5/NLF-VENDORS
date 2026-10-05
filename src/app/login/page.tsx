@@ -24,6 +24,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [previewCategoryId, setPreviewCategoryId] = useState<string | null>(null);
 
   // Redirect after auth
   useEffect(() => {
@@ -103,25 +104,29 @@ export default function LoginPage() {
               <div className="pointer-events-none absolute bottom-3 left-1/2 top-3 z-10 w-px -translate-x-1/2 bg-slate-300" aria-hidden="true" />
               {initialCategories.map((category, index) => {
                 const selected = category.id === activeCategory?.id;
+                const previewing = category.id === previewCategoryId;
+                const emphasized = selected || previewing;
                 const peach = category.theme === 'peach' || index === 0;
                 return (
                   <button
                     key={category.id}
                     type="button"
-                    onMouseEnter={() => setActiveCategory(category.id)}
-                    onFocus={() => setActiveCategory(category.id)}
+                    onMouseEnter={() => setPreviewCategoryId(category.id)}
+                    onMouseLeave={() => setPreviewCategoryId(null)}
+                    onFocus={() => setPreviewCategoryId(category.id)}
+                    onBlur={() => setPreviewCategoryId(null)}
                     onClick={() => setActiveCategory(category.id)}
                     aria-pressed={selected}
-                    className={`min-h-44 rounded-2xl border p-4 text-left transition-all duration-300 hover:z-20 hover:scale-[1.04] focus-visible:z-20 focus-visible:scale-[1.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${peach ? 'border-orange-200 bg-orange-100 text-orange-950' : 'border-emerald-200 bg-emerald-100 text-emerald-950'} ${selected ? 'z-10 scale-[1.02] shadow-lg' : 'shadow-sm'}`}
+                    className={`min-h-44 rounded-2xl border p-4 text-left transition-all duration-300 ${emphasized ? 'z-20 scale-[1.02] shadow-lg' : 'shadow-sm'} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${peach ? 'border-orange-200 bg-orange-100 text-orange-950' : 'border-emerald-200 bg-emerald-100 text-emerald-950'}`}
                   >
                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">{peach ? 'Livestock & animal booths' : 'Food & commercial'}</span>
                     <span className="mt-2 block text-base font-bold leading-tight">{category.name}</span>
-                    <span className={`mt-2 block text-xs leading-5 transition-all duration-300 ${selected ? 'opacity-100' : 'line-clamp-2 opacity-70'}`}>{category.description}</span>
-                    <span className="mt-3 block text-[10px] font-semibold uppercase tracking-wide">{selected ? 'Selected section' : 'Select this section'}</span>
+                    <span className={`mt-2 block text-xs leading-5 transition-all duration-300 ${emphasized ? 'opacity-100' : 'line-clamp-2 opacity-70'}`}>{category.description}</span>
+                    <span className="mt-3 block text-[10px] font-semibold uppercase tracking-wide">{selected ? 'Selected section' : previewing ? 'Preview section · click to select' : 'Select this section'}</span>
                   </button>
                 );
               })}
-              {additionalCategories.length > 0 && <div className="col-span-2 flex flex-wrap justify-center gap-2">{additionalCategories.map((category) => <button key={category.id} type="button" onMouseEnter={() => setActiveCategory(category.id)} onFocus={() => setActiveCategory(category.id)} onClick={() => setActiveCategory(category.id)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${category.id === activeCategory?.id ? 'border-slate-500 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-600'}`}>{category.name}</button>)}</div>}
+              {additionalCategories.length > 0 && <div className="col-span-2 flex flex-wrap justify-center gap-2">{additionalCategories.map((category) => <button key={category.id} type="button" onClick={() => setActiveCategory(category.id)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${category.id === activeCategory?.id ? 'border-slate-500 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-600'}`}>{category.name}</button>)}</div>}
             </div>
           )}
 

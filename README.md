@@ -22,7 +22,7 @@ From initial booth discovery and tier selection to automated stall assignment an
 ## 🚀 Key Features
 
 ### 🛒 Exhibitor & Vendor Portal
-* **Exhibitor Categories:** Separate catalogs and permits for Livestock Exhibitors and Food/Commercial Vendors, with one account able to apply across categories.
+* **Exhibitor Categories:** Separate catalogs and permits for Livestock Booths and Commercial Vendors, with one account able to apply across categories.
 * **Configurable Applications:** Administrators can create categories and configure category-specific questions for future applicants.
 * **Live Booth Discovery:** Interactive tier catalog displaying dimensions, live inventory counts, pricing, and bundled perks.
 * **Sector-Specific Classification:** Supports specialized industry categories:
@@ -119,7 +119,7 @@ Use the matching `sk_test_...` secret instead if the site uses a test public key
 Connect the Git repository to a Hostinger Node.js Web App. Configure the required `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `NEXT_PUBLIC_PAYSTACK_PUBLISHABLE_KEY` environment variables in Hostinger before building. Set `PAYSTACK_SECRET_KEY` only in Supabase Function secrets. Use `npm install` for install, `npm run build` for build, and `npm run start` for startup; the app listens on the port provided by Hostinger. Redeploy after changing environment variables because `NEXT_PUBLIC_*` values are embedded during the build.
 
 ### 4. Setup Database
-For a fresh project, run `supabase_schema.sql` in Supabase SQL Editor, then apply the repository migrations with `supabase db push`. Existing installations should apply new changes with `supabase db push` so current reservations and tiers are assigned to the Food/Commercial Vendors category without losing history.
+For a fresh project, run `supabase_schema.sql` in Supabase SQL Editor, then apply the repository migrations with `supabase db push`. Existing installations should apply new changes with `supabase db push`. The category correction migration classifies the existing booth catalog under Livestock Booths and seeds a separate three-tier Commercial Vendors catalog; both remain editable from the admin dashboard.
 
 ### 5. Seed Booth Tiers
 Initialize the database with default exhibition tiers by visiting `/setup` after signing in with an admin account.
