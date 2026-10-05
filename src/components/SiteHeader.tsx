@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { FileText, LogOut } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/Button';
@@ -12,12 +12,17 @@ import { useExhibitionCategory } from '@/lib/exhibition-category';
 export function SiteHeader() {
   const { user, loading, signOutUser } = useAuth();
   const { activeCategory } = useExhibitionCategory();
+  const pathname = usePathname();
   const router = useRouter();
 
   const handleSignOut = async () => {
     await signOutUser();
     router.push('/');
   };
+
+  // The admin layout renders its own category-aware header. Avoid showing the
+  // public navigation above it on admin dashboard and scanner pages.
+  if (pathname.startsWith('/admin')) return null;
 
   return (
     <header className={`sticky top-0 z-50 border-b shadow-sm backdrop-blur ${activeCategory?.theme === 'peach' ? 'border-orange-200 bg-orange-50/95' : activeCategory?.theme === 'green' ? 'border-emerald-200 bg-emerald-50/95' : 'border-slate-200 bg-white/95'}`}>
