@@ -5,9 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
 import { Loader2, ShieldOff, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { ExhibitionCategorySwitch } from '@/components/ExhibitionCategorySwitch';
+import { useExhibitionCategory } from '@/lib/exhibition-category';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, isAdmin, signOutUser } = useAuth();
+  const { activeCategory } = useExhibitionCategory();
   const router = useRouter();
 
   useEffect(() => {
@@ -50,11 +53,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className={`${activeCategory?.theme === 'peach' ? 'bg-orange-50 border-orange-200' : activeCategory?.theme === 'green' ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200'} border-b sticky top-0 z-10`}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <h1 className="font-heading font-semibold text-lg text-slate-900">NLF 2026 Admin</h1>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-600">{user.email}</span>
+            <ExhibitionCategorySwitch compact />
+            <span className="hidden text-sm text-slate-600 md:inline">{user.email}</span>
             <Button variant="outline" size="sm" onClick={signOutUser}>
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out

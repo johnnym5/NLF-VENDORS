@@ -114,8 +114,26 @@ export default function SetupPage() {
     setSeededCount(0);
 
     try {
+      const { data: vendorCategory, error: categoryError } = await supabase
+        .from('exhibition_categories')
+        .select('id')
+        .eq('slug', 'food-commercial-vendors')
+        .single();
+      if (categoryError || !vendorCategory) throw categoryError || new Error('Vendor category is not configured. Apply the category migration first.');
       for (const tier of SEED_TIERS) {
-        const { error: upsertError } = await supabase.from('booth_tiers').upsert(tier.data);
+        const { error: upsertError } = await supabase.from('booth_tiers').upsert({
+          id: tier.data.id,
+          category_id: vendorCategory.id,
+          name: tier.data.name,
+          dimension: tier.data.dimension,
+          color_code: tier.data.colorCode,
+          price: tier.data.price,
+          stock: tier.data.stock,
+          initial_stock: tier.data.initialStock,
+          is_locked: tier.data.isLocked,
+          perks: tier.data.perks,
+          updated_at: tier.data.updatedAt,
+        });
         if (upsertError) throw upsertError;
         setSeededCount((prev) => prev + 1);
       }

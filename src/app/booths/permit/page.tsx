@@ -16,11 +16,16 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ReservationStatus } from '@/lib/types';
 import { ManualTransferAccount, submitManualTransfer, useManualTransferAccounts, useManualTransferSubmissions } from '@/lib/manual-transfers';
+import { useExhibitionCategory } from '@/lib/exhibition-category';
+import { useApplicationFields } from '@/lib/exhibition-category-data';
 
 function PermitContent() {
   const router = useRouter();
   const { user, loading: authLoading, signOutUser } = useAuth();
   const { reservations, loading: resLoading } = useVendorReservations(user?.uid || undefined);
+  const { activeCategory, loading: categoryLoading } = useExhibitionCategory();
+  const { fields: categoryFields } = useApplicationFields(activeCategory?.id, true);
+  const categoryReservations = reservations.filter((reservation) => reservation.categoryId === activeCategory?.id);
 
   const [activeReservationIndex, setActiveReservationIndex] = useState<number | null>(null);
   const [showPayModal, setShowPayModal] = useState(false);
@@ -38,12 +43,14 @@ function PermitContent() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (reservations.length > 0 && activeReservationIndex === null) {
-      setActiveReservationIndex(reservations.length - 1);
-    } else if (reservations.length > 0 && activeReservationIndex !== null && activeReservationIndex >= reservations.length) {
-      setActiveReservationIndex(reservations.length - 1);
+    if (categoryReservations.length > 0 && activeReservationIndex === null) {
+      setActiveReservationIndex(categoryReservations.length - 1);
+    } else if (categoryReservations.length > 0 && activeReservationIndex !== null && activeReservationIndex >= categoryReservations.length) {
+      setActiveReservationIndex(categoryReservations.length - 1);
     }
-  }, [reservations, activeReservationIndex]);
+  }, [categoryReservations, activeReservationIndex]);
+
+  useEffect(() => { setActiveReservationIndex(null); }, [activeCategory?.id]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -56,9 +63,9 @@ function PermitContent() {
     router.push('/booths');
   };
 
-  const currentRes = activeReservationIndex !== null && reservations[activeReservationIndex]
-    ? reservations[activeReservationIndex]
-    : reservations[reservations.length - 1];
+  const currentRes = activeReservationIndex !== null && categoryReservations[activeReservationIndex]
+    ? categoryReservations[activeReservationIndex]
+    : categoryReservations[categoryReservations.length - 1];
   const isApprovedForTransfer = currentRes?.status === 'APPROVED_PENDING_PAYMENT';
   const { accounts: manualTransferAccounts, loading: transferAccountsLoading, error: transferAccountsError } = useManualTransferAccounts(
     Boolean(user && isApprovedForTransfer)
@@ -213,7 +220,7 @@ function PermitContent() {
     }
   };
 
-  if (authLoading || resLoading) {
+  if (authLoading || resLoading || categoryLoading) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-transparent space-y-4">
         <Loader2 className="w-8 h-8 animate-spin text-slate-500" />
@@ -222,13 +229,13 @@ function PermitContent() {
     );
   }
 
-  if (!user || reservations.length === 0) {
+  if (!user || categoryReservations.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent flex-col space-y-4 px-4 text-center">
-        <p className="text-slate-600 text-lg font-heading font-medium">No active booth reservations found.</p>
-        <p className="text-slate-400 text-sm max-w-sm">Reserve your space at the National Livestock Festival 2026.</p>
+        <p className="text-slate-600 text-lg font-heading font-medium">No {activeCategory?.name || 'exhibition'} permits found.</p>
+        <p className="text-slate-400 text-sm max-w-sm">Apply for a space in {activeCategory?.name || 'this section'} to see your permit here.</p>
         <Button onClick={() => router.push('/booths')} className="bg-[#1E4D38] hover:bg-[#153627] text-white">
-          Browse Exhibition Booths
+          Browse {activeCategory?.name || 'Exhibition'} Spaces
         </Button>
       </div>
     );
@@ -241,7 +248,7 @@ function PermitContent() {
   const transferProcessing = latestTransfer?.status === 'PROCESSING' && isApprovedPendingPayment;
   const transferNotReceived = latestTransfer?.status === 'NOT_RECEIVED' && isApprovedPendingPayment;
 
-  const deletingTarget = reservations.find((r) => r.id === deletingResId);
+  const deletingTarget = categoryReservations.find((r) => r.id === deletingResId);
 
   return (
     <div className="min-h-screen bg-transparent py-12 px-4 sm:px-6 lg:px-8">
@@ -251,21 +258,21 @@ function PermitContent() {
         <div className="mb-6 flex flex-col sm:flex-row justify-between items-center bg-white p-5 rounded-xl border border-slate-200/70 shadow-sm gap-4">
           <div>
             <h3 className="font-semibold text-slate-900 text-sm">Need another exhibition space?</h3>
-            <p className="text-xs text-slate-500 mt-0.5">Reserve additional stalls or pavilions for your business team.</p>
+            <p className="text-xs text-slate-500 mt-0.5">Apply for another space in {activeCategory?.name || 'this section'}.</p>
           </div>
           <Button onClick={() => router.push('/booths')} size="sm" className="w-full sm:w-auto bg-[#1E4D38] hover:bg-[#153627] text-white flex items-center gap-1.5">
-            <Plus className="w-4 h-4" /> Book Additional Booth
+            <Plus className="w-4 h-4" /> Apply for Another Space
           </Button>
         </div>
 
         {/* Multi-Booth Tab Selector */}
-        {reservations.length > 1 && (
+        {categoryReservations.length > 1 && (
           <div className="mb-6 bg-white p-3 rounded-xl border border-slate-200/60 shadow-sm">
             <span className="text-[11px] text-slate-400 block text-center font-bold uppercase tracking-wider mb-2">
-              Your Reserved Spaces ({reservations.length})
+              Your {activeCategory?.name || 'Exhibition'} Permits ({categoryReservations.length})
             </span>
             <div className="flex flex-wrap gap-2 justify-center">
-              {reservations.map((res, idx) => {
+              {categoryReservations.map((res, idx) => {
                 const canDelete = res.status === 'RESERVED_PENDING_APPROVAL' || res.status === 'CART';
                 return (
                   <div key={res.id} className="inline-flex items-center">
@@ -274,7 +281,7 @@ function PermitContent() {
                       className={`px-3.5 py-1.5 font-mono text-xs transition-all border ${
                         canDelete ? 'rounded-l-lg' : 'rounded-lg'
                       } ${
-                        idx === (activeReservationIndex ?? reservations.length - 1)
+                        idx === (activeReservationIndex ?? categoryReservations.length - 1)
                           ? 'bg-slate-900 text-white font-bold border-slate-900 shadow-sm'
                           : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200/60'
                       }`}
@@ -454,9 +461,11 @@ function PermitContent() {
                     <span className="font-medium text-slate-800 break-words">{currentRes.profile?.contactPerson || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="block text-slate-400 text-xs mb-0.5">What I Sell</span>
-                    <span className="font-medium text-slate-800 break-words">{currentRes.profile?.sector || 'General Merchant'}</span>
+                  <span className="block text-slate-400 text-xs mb-0.5">{activeCategory?.name || 'Exhibitor Category'}</span>
+                  <span className="font-medium text-slate-800 break-words">{activeCategory?.name}</span>
                   </div>
+                {activeCategory?.slug === 'food-commercial-vendors' && <div><span className="block text-slate-400 text-xs mb-0.5">What I Sell</span><span className="font-medium text-slate-800 break-words">{currentRes.profile?.sector || 'General Merchant'}</span></div>}
+                {categoryFields.filter((field) => currentRes.applicationData?.[field.fieldKey] !== undefined && currentRes.applicationData?.[field.fieldKey] !== null).map((field) => <div key={field.id}><span className="block text-slate-400 text-xs mb-0.5">{field.label}</span><span className="font-medium text-slate-800 break-words">{String(currentRes.applicationData?.[field.fieldKey])}</span></div>)}
                   <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-200/60">
                     <div>
                       <span className="block text-slate-400 text-xs mb-0.5">Email</span>
@@ -576,7 +585,7 @@ function PermitContent() {
         <Modal
           isOpen={showPayModal}
           onClose={() => !paying && setShowPayModal(false)}
-          title="Pay for Exhibition Booth"
+          title={`Pay for ${activeCategory?.name || 'Exhibition Space'}`}
           size="md"
         >
           <div className="space-y-6">

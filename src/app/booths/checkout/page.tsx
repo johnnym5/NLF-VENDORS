@@ -10,6 +10,8 @@ import { FadeIn } from '@/components/ui/FadeIn';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useExhibitionCategory } from '@/lib/exhibition-category';
+import { useApplicationFields } from '@/lib/exhibition-category-data';
 
 type Step = 'auth' | 'profile' | 'custom_requests' | 'confirm' | 'complete';
 
@@ -20,11 +22,15 @@ function CheckoutContent() {
   const [tierId, setTierId] = useState<string | null>(null);
 
   const { user, loading: authLoading, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
-  const { tiers, loading: tiersLoading } = useTiers();
+  const { categories, activeCategory, setActiveCategory, loading: categoryLoading } = useExhibitionCategory();
+  const { tiers, loading: tiersLoading } = useTiers(activeCategory?.id);
+  const { fields: applicationFields } = useApplicationFields(activeCategory?.id);
   const { reservations: existingReservations } = useVendorReservations(user?.uid || undefined);
 
   useEffect(() => {
     const nextTier = searchParams.get('tier');
+    const requestedCategory = searchParams.get('category');
+    if (requestedCategory && categories.some((category) => category.id === requestedCategory)) setActiveCategory(requestedCategory);
     if (nextTier) {
       setTierId(nextTier);
     } else if (typeof window !== 'undefined') {
@@ -36,9 +42,10 @@ function CheckoutContent() {
         router.push('/booths');
       }
     }
-  }, [searchParams, router]);
+  }, [searchParams, router, categories, setActiveCategory]);
 
   const [step, setStep] = useState<Step>('auth');
+  const [applicationAnswers, setApplicationAnswers] = useState<Record<string, string | number | boolean | null>>({});
   const [formData, setFormData] = useState({
     orgName: '',
     contactPerson: '',
@@ -48,6 +55,8 @@ function CheckoutContent() {
     businessDescription: '',
     customRequestText: '',
   });
+
+  useEffect(() => { setApplicationAnswers({}); }, [activeCategory?.id]);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +96,7 @@ function CheckoutContent() {
   }, [user, existingReservations]);
 
   const selectedTier = tiers.find(t => t.id === tierId);
+  const showVendorBusinessFields = activeCategory?.slug === 'food-commercial-vendors';
 
   const handleGoogleSignIn = async () => {
     setError(null);
@@ -124,13 +134,15 @@ function CheckoutContent() {
           orgName: formData.orgName,
           contactPerson: formData.contactPerson,
           phone: formData.phone,
-          sector: formData.sector || 'General Goods & Services',
+          sector: showVendorBusinessFields ? (formData.sector || 'General Goods & Services') : undefined,
           email: user.email,
-          website: formData.website,
-          businessDescription: formData.businessDescription,
+          website: showVendorBusinessFields ? formData.website : undefined,
+          businessDescription: showVendorBusinessFields ? formData.businessDescription : undefined,
         },
         formData.customRequestText,
-        'RESERVED_PENDING_APPROVAL'
+        'RESERVED_PENDING_APPROVAL',
+        activeCategory?.id,
+        applicationAnswers,
       );
 
       setStep('complete');
@@ -144,7 +156,7 @@ function CheckoutContent() {
     }
   };
 
-  if (authLoading || tiersLoading) {
+  if (authLoading || tiersLoading || categoryLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-transparent">
         <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
@@ -177,10 +189,10 @@ function CheckoutContent() {
         </Button>
 
         {/* Selected Tier Summary Banner */}
-        <div className="bg-white rounded-xl border border-slate-200/70 p-6 mb-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className={`rounded-xl border p-6 mb-8 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${activeCategory?.theme === 'peach' ? 'border-orange-200 bg-orange-50' : activeCategory?.theme === 'green' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200/70 bg-white'}`}>
           <div>
             <span className="text-xs text-slate-400 font-bold uppercase tracking-wider block mb-1">
-              Selected Exhibition Space
+              {activeCategory?.name || 'Exhibition'} · Selected Space
             </span>
             <h2 className="text-xl font-heading font-bold text-slate-900">{selectedTier.name}</h2>
             <p className="text-sm text-slate-500">{selectedTier.dimension}</p>
@@ -203,10 +215,10 @@ function CheckoutContent() {
             {step === 'auth' && !user && (
               <div>
                 <h3 className="text-lg font-heading font-semibold text-slate-900 mb-2">
-                  Vendor Authentication
+                  {activeCategory?.name || 'Exhibitor'} Authentication
                 </h3>
                 <p className="text-sm text-slate-500 mb-6">
-                  Sign in or create a vendor account to reserve your space and submit custom requests.
+                  Sign in or create an account to apply for spaces in {activeCategory?.name || 'this section'}.
                 </p>
 
                 <form onSubmit={handleEmailAuth} className="space-y-4 mb-6">
@@ -236,7 +248,7 @@ function CheckoutContent() {
                     required
                   />
                   <Button type="submit" className="w-full">
-                    {authMode === 'signin' ? 'Sign In & Continue' : 'Create Vendor Account'}
+                    {authMode === 'signin' ? 'Sign In & Continue' : 'Create Account'}
                   </Button>
                 </form>
 
@@ -283,10 +295,10 @@ function CheckoutContent() {
             {step === 'profile' && (
               <div>
                 <h3 className="text-lg font-heading font-semibold text-slate-900 mb-2">
-                  Vendor Application & Space Reservation
+                  {activeCategory?.name || 'Exhibitor'} Application & Space Reservation
                 </h3>
                 <p className="text-sm text-slate-500 mb-6">
-                  Provide your organization details. This information will be printed on your digital exhibition pass.
+                  Provide shared contact details and the information requested for this exhibitor category.
                 </p>
 
                 <div className="space-y-4">
@@ -314,42 +326,33 @@ function CheckoutContent() {
                     />
                   </div>
 
-                  {/* Free-form "What I sell:" text field */}
-                  <Input
-                    label="What I sell: *"
-                    placeholder="e.g. Halal Frozen Meat, Vaccines, Agricultural Tractors, Cold Storage, etc."
-                    value={formData.sector}
-                    onChange={(e) => setFormData(prev => ({ ...prev, sector: e.target.value }))}
-                    required
-                  />
+                  {showVendorBusinessFields && <>
+                    <Input label="What I sell: *" placeholder="e.g. Halal Frozen Meat, Vaccines, Agricultural Tractors" value={formData.sector} onChange={(e) => setFormData(prev => ({ ...prev, sector: e.target.value }))} required />
+                    <Input label="Website (Optional)" placeholder="https://company.com" value={formData.website} onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))} />
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Business Overview (Optional)</label>
+                      <textarea rows={2} placeholder="Brief description of products/services to be exhibited..." value={formData.businessDescription} onChange={(e) => setFormData(prev => ({ ...prev, businessDescription: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                    </div>
+                  </>}
 
-                  <Input
-                    label="Website (Optional)"
-                    placeholder="https://company.com"
-                    value={formData.website}
-                    onChange={(e) => setFormData(prev => ({ ...prev, website: e.target.value }))}
-                  />
-
-                  <div>
-                    <label className="block text-xs font-medium text-slate-700 mb-1">
-                      Business Overview (Optional)
-                    </label>
-                    <textarea
-                      rows={2}
-                      placeholder="Brief description of products/services to be exhibited..."
-                      value={formData.businessDescription}
-                      onChange={(e) => setFormData(prev => ({ ...prev, businessDescription: e.target.value }))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-                    />
-                  </div>
+                  {applicationFields.map((field) => {
+                    const value = applicationAnswers[field.fieldKey];
+                    const onChange = (next: string | number | boolean | null) => setApplicationAnswers((answers) => ({ ...answers, [field.fieldKey]: next }));
+                    if (field.fieldType === 'checkbox') return <label key={field.id} className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={value === true} onChange={(event) => onChange(event.target.checked)} />{field.label}{field.required && <span className="text-rose-600">*</span>}</label>;
+                    if (field.fieldType === 'textarea') return <label key={field.id} className="block text-xs font-medium text-slate-700">{field.label}{field.required && ' *'}<textarea required={field.required} rows={3} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>;
+                    if (field.fieldType === 'select') return <label key={field.id} className="block text-xs font-medium text-slate-700">{field.label}{field.required && ' *'}<select required={field.required} value={typeof value === 'string' ? value : ''} onChange={(event) => onChange(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Choose an option</option>{field.options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+                    return <label key={field.id} className="block text-xs font-medium text-slate-700">{field.label}{field.required && ' *'}<input required={field.required} type={field.fieldType === 'number' ? 'number' : field.fieldType === 'date' ? 'date' : 'text'} value={value === null || value === undefined ? '' : String(value)} onChange={(event) => onChange(field.fieldType === 'number' ? (event.target.value === '' ? null : Number(event.target.value)) : event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>;
+                  })}
 
                   <div className="pt-4 flex justify-end">
                     <Button
                       onClick={() => {
-                        if (!formData.orgName || !formData.contactPerson || !formData.phone || !formData.sector) {
+                        if (!formData.orgName || !formData.contactPerson || !formData.phone || (showVendorBusinessFields && !formData.sector)) {
                           setError('Please fill in all required fields marked with *');
                           return;
                         }
+                        const missing = applicationFields.find((field) => field.required && (applicationAnswers[field.fieldKey] === null || applicationAnswers[field.fieldKey] === undefined || applicationAnswers[field.fieldKey] === '' || (field.fieldType === 'checkbox' && applicationAnswers[field.fieldKey] !== true)));
+                        if (missing) { setError(`Please answer “${missing.label}”.`); return; }
                         setError(null);
                         setStep('custom_requests');
                       }}
@@ -365,7 +368,7 @@ function CheckoutContent() {
             {step === 'custom_requests' && (
               <div>
                 <h3 className="text-lg font-heading font-semibold text-slate-900 mb-2">
-                  Special Requirements & Custom Booth Attachments
+                  Special Requirements & Custom Space Requests
                 </h3>
                 <p className="text-sm text-slate-500 mb-6">
                   Do you require extra power drops, specialized cold-chain capacity, heavy equipment access, or custom branding support?
@@ -418,6 +421,10 @@ function CheckoutContent() {
 
                 <div className="bg-slate-50 rounded-xl p-5 border border-slate-200/80 mb-6 space-y-3 text-sm">
                   <div className="flex justify-between border-b border-slate-200 pb-2">
+                    <span className="text-slate-500">Exhibitor Section:</span>
+                    <span className="font-semibold text-slate-900">{activeCategory?.name}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-200 pb-2">
                     <span className="text-slate-500">Exhibition Space:</span>
                     <span className="font-semibold text-slate-900">{selectedTier.name} ({selectedTier.dimension})</span>
                   </div>
@@ -429,10 +436,8 @@ function CheckoutContent() {
                     <span className="text-slate-500">Contact Person:</span>
                     <span className="text-slate-800">{formData.contactPerson} ({formData.phone})</span>
                   </div>
-                  <div className="flex justify-between border-b border-slate-200 pb-2">
-                    <span className="text-slate-500">What I Sell:</span>
-                    <span className="text-slate-800 font-medium">{formData.sector}</span>
-                  </div>
+                  {showVendorBusinessFields && <div className="flex justify-between border-b border-slate-200 pb-2"><span className="text-slate-500">What I Sell:</span><span className="text-slate-800 font-medium">{formData.sector}</span></div>}
+                  {applicationFields.filter((field) => applicationAnswers[field.fieldKey] !== undefined && applicationAnswers[field.fieldKey] !== null && applicationAnswers[field.fieldKey] !== '').map((field) => <div key={field.id} className="flex justify-between border-b border-slate-200 pb-2"><span className="text-slate-500">{field.label}:</span><span className="text-right font-medium text-slate-800">{String(applicationAnswers[field.fieldKey])}</span></div>)}
                   <div className="flex justify-between border-b border-slate-200 pb-2">
                     <span className="text-slate-500">Estimated Space Rate:</span>
                     <span className="font-bold text-slate-900">{formatNaira(selectedTier.price)}</span>

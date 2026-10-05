@@ -4,9 +4,11 @@ import Link from 'next/link';
 import { ArrowRight, CheckCircle2 } from 'lucide-react';
 import { useTiers } from '@/lib/supabase-queries';
 import { formatNaira } from '@/lib/design-tokens';
+import { useExhibitionCategory } from '@/lib/exhibition-category';
 
 export default function LandingPage() {
-  const { tiers, loading, error } = useTiers();
+  const { activeCategory, loading: categoryLoading } = useExhibitionCategory();
+  const { tiers, loading, error } = useTiers(activeCategory?.id);
 
   return (
     <div className="min-h-screen bg-transparent flex flex-col">
@@ -14,13 +16,13 @@ export default function LandingPage() {
       <section className="flex-1 flex flex-col items-center justify-center px-4 pt-20 pb-16 text-center">
         <div className="animate-fade-in">
           <p className="text-sm text-slate-500 uppercase tracking-widest mb-3 font-medium">
-            Abuja · 2026 · Vendor Portal
+            Abuja · 2026 · {activeCategory?.name || 'Exhibitor Portal'}
           </p>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-heading font-bold text-slate-900 mb-4 leading-tight">
             National Livestock<br />Festival 2026
           </h1>
           <p className="text-lg text-slate-600 max-w-xl mx-auto mb-10">
-            Bring your business to Nigeria&apos;s leading livestock and agribusiness gathering. Explore exhibition spaces and find the right fit for your team.
+            {activeCategory?.description || 'Explore exhibition spaces and find the right fit for your team.'}
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md mx-auto sm:max-w-none">
@@ -28,7 +30,7 @@ export default function LandingPage() {
               href="/booths"
               className="inline-flex items-center justify-center gap-2 bg-slate-900 text-white font-medium px-8 py-3.5 rounded-lg hover:bg-slate-800 transition-colors duration-200 text-base shadow-sm w-full sm:w-auto"
             >
-            Explore Available Booths
+              Explore {activeCategory?.name || 'Exhibition'} Spaces
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
@@ -45,11 +47,11 @@ export default function LandingPage() {
       <section className="px-4 pb-20">
         <div className="max-w-5xl mx-auto">
           <p className="text-center text-sm text-slate-500 uppercase tracking-wider mb-2 font-medium">
-            Find Your Exhibition Space
+            {activeCategory?.name || 'Exhibition'} Spaces
           </p>
           <p className="text-center text-sm text-slate-500 mb-8">Live booth prices and availability</p>
 
-          {loading ? (
+          {categoryLoading || loading ? (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               {[1, 2, 3].map((item) => <div key={item} className="h-64 animate-pulse rounded-xl border border-slate-200 bg-white" />)}
             </div>

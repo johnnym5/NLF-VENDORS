@@ -12,17 +12,16 @@ import {
   UserProfile
 } from './types';
 
-export function useTiers() {
+export function useTiers(categoryId?: string) {
   const [tiers, setTiers] = useState<BoothTier[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     async function fetchTiers() {
-      const { data, error } = await supabase
-        .from('booth_tiers')
-        .select('*')
-        .order('price', { ascending: true });
+      let query = supabase.from('booth_tiers').select('*').order('price', { ascending: true });
+      if (categoryId) query = query.eq('category_id', categoryId);
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching tiers:', error);
@@ -30,6 +29,7 @@ export function useTiers() {
       } else if (data) {
         const mapped: BoothTier[] = data.map((t: any) => ({
           id: t.id,
+          categoryId: t.category_id,
           name: t.name,
           dimension: t.dimension,
           colorCode: t.colorCode || t.color_code || 'sage',
@@ -48,7 +48,7 @@ export function useTiers() {
     fetchTiers();
 
     const channel = supabase
-      .channel('public:booth_tiers')
+      .channel(`public:booth_tiers:${categoryId || 'all'}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'booth_tiers' }, () => {
         fetchTiers();
       })
@@ -57,26 +57,27 @@ export function useTiers() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [categoryId]);
 
   return { tiers, loading, error };
 }
 
-export function useReservations() {
+export function useReservations(categoryId?: string) {
   const [reservations, setReservations] = useState<BoothReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     async function fetchReservations() {
-      const { data, error } = await supabase
+      let query = supabase
         .from('booth_reservations')
         .select(`
           *,
           profile:profiles(*),
           customRequests:custom_requests(*)
-        `)
-        .order('created_at', { ascending: false });
+        `);
+      if (categoryId) query = query.eq('category_id', categoryId);
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching reservations:', error);
@@ -84,6 +85,8 @@ export function useReservations() {
       } else if (data) {
         const mapped: BoothReservation[] = data.map((r: any) => ({
           id: r.id,
+          categoryId: r.category_id,
+          applicationData: r.application_data || {},
           referenceId: r.reference_id,
           userId: r.user_id,
           tierId: r.tier_id,
@@ -142,7 +145,7 @@ export function useReservations() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [categoryId]);
 
   return { reservations, loading, error };
 }
@@ -176,6 +179,8 @@ export function useVendorReservations(userId: string | undefined) {
       } else if (data) {
         const mapped: BoothReservation[] = data.map((r: any) => ({
           id: r.id,
+          categoryId: r.category_id,
+          applicationData: r.application_data || {},
           referenceId: r.reference_id,
           userId: r.user_id,
           tierId: r.tier_id,
@@ -247,26 +252,29 @@ export async function saveBoothReservation(
     orgName: string;
     contactPerson: string;
     phone: string;
-    sector: string;
+    sector?: string;
     email?: string;
     website?: string;
     businessDescription?: string;
   },
   customRequestText?: string,
-  initialStatus: ReservationStatus = 'RESERVED_PENDING_APPROVAL'
+  initialStatus: ReservationStatus = 'RESERVED_PENDING_APPROVAL',
+  categoryId?: string,
+  applicationData: Record<string, string | number | boolean | null> = {},
 ) {
   // 1. Upsert profile
-  const { error: profileErr } = await supabase.from('profiles').upsert({
+  const profileValues: Record<string, unknown> = {
     id: userId,
     email: orgDetails.email || '',
     org_name: orgDetails.orgName,
     contact_person: orgDetails.contactPerson,
     phone: orgDetails.phone,
-    sector: orgDetails.sector,
-    website: orgDetails.website || '',
-    business_description: orgDetails.businessDescription || '',
     updated_at: new Date().toISOString(),
-  });
+  };
+  if (orgDetails.sector) profileValues.sector = orgDetails.sector;
+  if (orgDetails.website) profileValues.website = orgDetails.website;
+  if (orgDetails.businessDescription) profileValues.business_description = orgDetails.businessDescription;
+  const { error: profileErr } = await supabase.from('profiles').upsert(profileValues);
   if (profileErr) console.warn('Profile upsert warning:', profileErr);
 
   // 2. Fetch tier details
@@ -284,6 +292,9 @@ export async function saveBoothReservation(
   if (tierData.is_locked || tierData.isLocked) {
     throw new Error('This booth tier is currently locked for new reservations.');
   }
+  if (categoryId && tierData.category_id !== categoryId) {
+    throw new Error('The selected space does not belong to the active exhibition category.');
+  }
 
   // Generate unique Reference ID (e.g. BTH-9412)
   const referenceId = 'BTH-' + Math.floor(1000 + Math.random() * 9000).toString();
@@ -295,6 +306,8 @@ export async function saveBoothReservation(
       reference_id: referenceId,
       user_id: userId,
       tier_id: tierId,
+      category_id: categoryId || tierData.category_id,
+      application_data: applicationData,
       tier_name: tierData.name,
       base_price: tierData.price,
       additional_fees: 0,
@@ -347,50 +360,13 @@ export async function updateReservationStatus(
 
   // Core Rule: If transitioning to CONFIRMED_PAID for the first time
   if (newStatus === 'CONFIRMED_PAID' && currentRes.status !== 'CONFIRMED_PAID') {
-    const { data: tierList } = await supabase
-      .from('booth_tiers')
-      .select('stock')
-      .eq('id', currentRes.tier_id);
-
-    const tier = tierList && tierList.length > 0 ? tierList[0] : null;
-
-    if (tier && tier.stock <= 0) {
-      throw new Error('Cannot confirm order: Selected tier is currently out of stock.');
-    }
-
-    // Decrement tier stock by 1
-    if (tier) {
-      await supabase
-        .from('booth_tiers')
-        .update({ stock: Math.max(0, tier.stock - 1) })
-        .eq('id', currentRes.tier_id);
-    }
-
-    // Calculate vendor sequence safely
-    let sequence = 1;
-    try {
-      const { data: confirmedList } = await supabase
-        .from('booth_reservations')
-        .select('id')
-        .eq('status', 'CONFIRMED_PAID');
-
-      sequence = (confirmedList?.length || 0) + 1;
-    } catch {
-      sequence = Math.floor(1 + Math.random() * 99);
-    }
-
-    // Update reservation status to CONFIRMED_PAID
-    const { error: updateErr } = await supabase
-      .from('booth_reservations')
-      .update({
-        status: 'CONFIRMED_PAID',
-        vendor_sequence: sequence,
-        payment_reference: paymentReference || 'PAY-' + Math.random().toString(36).substring(2, 10).toUpperCase(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', reservationId);
-
-    if (updateErr) throw new Error(updateErr.message);
+    const reference = paymentReference || 'ADMIN-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+    const { error: settlementError } = await supabase.rpc('settle_booth_payment', {
+      p_reservation_id: reservationId,
+      p_payment_reference: reference,
+      p_payment_method: 'BANK_TRANSFER',
+    });
+    if (settlementError) throw new Error(settlementError.message);
     return;
   }
 
@@ -575,16 +551,9 @@ export async function adminRegisterOrganization(data: {
       .update({ stock: Math.max(0, tierData.stock - 1) })
       .eq('id', data.tierId);
 
-    try {
-      const { data: confirmedList } = await supabase
-        .from('booth_reservations')
-        .select('id')
-        .eq('status', 'CONFIRMED_PAID');
-
-      vendorSequence = (confirmedList?.length || 0) + 1;
-    } catch {
-      vendorSequence = 1;
-    }
+    const { data: allocatedSequence, error: sequenceError } = await supabase.rpc('allocate_exhibition_category_sequence', { p_category_id: tierData.category_id });
+    if (sequenceError || typeof allocatedSequence !== 'number') throw new Error(sequenceError?.message || 'Could not allocate a category permit number.');
+    vendorSequence = allocatedSequence;
 
     paymentRef = 'MANUAL-' + Math.random().toString(36).substring(2, 10).toUpperCase();
   }
@@ -675,13 +644,14 @@ export async function addBoothTier(tierData: Omit<BoothTier, 'id' | 'updatedAt' 
   const tierId = 'tier_' + Math.random().toString(36).substring(2, 10);
   const { error } = await supabase.from('booth_tiers').insert({
     id: tierId,
+    category_id: tierData.categoryId,
     name: tierData.name,
     dimension: tierData.dimension,
-    colorCode: tierData.colorCode,
+    color_code: tierData.colorCode,
     price: tierData.price,
     stock: tierData.stock,
-    initialStock: tierData.initialStock,
-    isLocked: false,
+    initial_stock: tierData.initialStock,
+    is_locked: false,
     perks: tierData.perks,
   });
   if (error) throw error;

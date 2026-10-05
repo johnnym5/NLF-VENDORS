@@ -9,10 +9,14 @@ import { FadeIn } from '@/components/ui/FadeIn';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { useExhibitionCategory } from '@/lib/exhibition-category';
 
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading, isAdmin, signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { categories, activeCategory, setActiveCategory } = useExhibitionCategory();
+  const initialCategories = [...categories].sort((a, b) => a.sortOrder - b.sortOrder).slice(0, 2);
+  const additionalCategories = categories.filter((category) => !initialCategories.some((item) => item.id === category.id));
 
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [orgName, setOrgName] = useState('');
@@ -23,14 +27,14 @@ export default function LoginPage() {
 
   // Redirect after auth
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && categories.length > 0) {
       if (isAdmin) {
-        router.push('/admin/booths');
+        router.push(`/admin/booths?category=${activeCategory?.id || ''}`);
       } else {
-        router.push('/booths');
+        router.push(`/booths/permit?category=${activeCategory?.id || ''}`);
       }
     }
-  }, [user, loading, isAdmin, router]);
+  }, [user, loading, isAdmin, router, categories.length, activeCategory?.id]);
 
   const handleGoogleSignIn = async () => {
     setError(null);
@@ -94,18 +98,45 @@ export default function LoginPage() {
             Back to Home
           </Link>
 
-          <div className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-8">
+          {initialCategories.length >= 2 && (
+            <div className="relative mb-6 grid grid-cols-2 gap-3" aria-label="Choose an exhibitor section">
+              <div className="pointer-events-none absolute bottom-3 left-1/2 top-3 z-10 w-px -translate-x-1/2 bg-slate-300" aria-hidden="true" />
+              {initialCategories.map((category, index) => {
+                const selected = category.id === activeCategory?.id;
+                const peach = category.theme === 'peach' || index === 0;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onMouseEnter={() => setActiveCategory(category.id)}
+                    onFocus={() => setActiveCategory(category.id)}
+                    onClick={() => setActiveCategory(category.id)}
+                    aria-pressed={selected}
+                    className={`min-h-44 rounded-2xl border p-4 text-left transition-all duration-300 hover:z-20 hover:scale-[1.04] focus-visible:z-20 focus-visible:scale-[1.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${peach ? 'border-orange-200 bg-orange-100 text-orange-950' : 'border-emerald-200 bg-emerald-100 text-emerald-950'} ${selected ? 'z-10 scale-[1.02] shadow-lg' : 'shadow-sm'}`}
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">{peach ? 'Livestock & animal booths' : 'Food & commercial'}</span>
+                    <span className="mt-2 block text-base font-bold leading-tight">{category.name}</span>
+                    <span className={`mt-2 block text-xs leading-5 transition-all duration-300 ${selected ? 'opacity-100' : 'line-clamp-2 opacity-70'}`}>{category.description}</span>
+                    <span className="mt-3 block text-[10px] font-semibold uppercase tracking-wide">{selected ? 'Selected section' : 'Select this section'}</span>
+                  </button>
+                );
+              })}
+              {additionalCategories.length > 0 && <div className="col-span-2 flex flex-wrap justify-center gap-2">{additionalCategories.map((category) => <button key={category.id} type="button" onMouseEnter={() => setActiveCategory(category.id)} onFocus={() => setActiveCategory(category.id)} onClick={() => setActiveCategory(category.id)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${category.id === activeCategory?.id ? 'border-slate-500 bg-slate-100 text-slate-900' : 'border-slate-200 bg-white text-slate-600'}`}>{category.name}</button>)}</div>}
+            </div>
+          )}
+
+          <div className={`rounded-xl border p-8 shadow-sm ${activeCategory?.theme === 'peach' ? 'border-orange-200 bg-orange-50' : activeCategory?.theme === 'green' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200/70 bg-white'}`}>
             <div className="text-center mb-8">
               <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">
-                NLF 2026 Vendor Portal
+                NLF 2026 · {activeCategory?.name || 'Exhibitor Portal'}
               </p>
               <h1 className="text-2xl font-heading font-bold text-slate-900">
                 {authMode === 'signin' ? 'Welcome Back' : 'Create Account'}
               </h1>
               <p className="text-sm text-slate-500 mt-1">
                 {authMode === 'signin'
-                  ? 'Sign in to manage your exhibition booth.'
-                  : 'Register to reserve an exhibition booth.'}
+                  ? `Sign in to manage your ${activeCategory?.name || 'exhibition'} permits.`
+                  : `Register to apply for ${activeCategory?.name || 'an exhibition'} spaces.`}
               </p>
             </div>
 

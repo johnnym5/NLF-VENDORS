@@ -24,7 +24,9 @@ export interface ManualTransferSubmission {
   status: ManualTransferStatus;
   createdAt: string;
   reviewedAt?: string;
+  categoryId?: string;
   reservation?: {
+    categoryId?: string;
     referenceId: string;
     tierName: string;
     totalAmount: number;
@@ -55,6 +57,7 @@ function mapSubmission(row: any): ManualTransferSubmission {
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at || undefined,
     reservation: row.reservation ? {
+      categoryId: row.reservation.category_id,
       referenceId: row.reservation.reference_id,
       tierName: row.reservation.tier_name,
       totalAmount: Number(row.reservation.total_amount),
@@ -105,7 +108,7 @@ export function useManualTransferAccounts(enabled = true) {
   return { accounts, loading, error, refresh };
 }
 
-export function useManualTransferSubmissions(reservationId?: string, enabled = true) {
+export function useManualTransferSubmissions(reservationId?: string, enabled = true, categoryId?: string) {
   const [submissions, setSubmissions] = useState<ManualTransferSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,9 +121,10 @@ export function useManualTransferSubmissions(reservationId?: string, enabled = t
     }
     let query = supabase
       .from('manual_transfer_submissions')
-      .select('*, reservation:booth_reservations!inner(reference_id,tier_name,total_amount,profile:profiles(org_name,email,phone))')
+      .select('*, reservation:booth_reservations!inner(category_id,reference_id,tier_name,total_amount,profile:profiles(org_name,email,phone))')
       .order('created_at', { ascending: false });
     if (reservationId) query = query.eq('reservation_id', reservationId);
+    if (categoryId) query = query.eq('reservation.category_id', categoryId);
     const { data, error: queryError } = await query;
     if (queryError) {
       setError(queryError.message);
@@ -129,12 +133,12 @@ export function useManualTransferSubmissions(reservationId?: string, enabled = t
       setSubmissions((data || []).map(mapSubmission));
     }
     setLoading(false);
-  }, [reservationId, enabled]);
+  }, [reservationId, enabled, categoryId]);
 
   useEffect(() => {
     void refresh();
     if (!enabled) return;
-    let channel = supabase.channel(`manual-transfer-submissions-${reservationId || 'admin'}`)
+    let channel = supabase.channel(`manual-transfer-submissions-${reservationId || categoryId || 'admin'}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_transfer_submissions' }, () => void refresh());
     if (reservationId) {
       channel = channel.on('postgres_changes', {
@@ -143,7 +147,7 @@ export function useManualTransferSubmissions(reservationId?: string, enabled = t
     }
     channel.subscribe();
     return () => { void supabase.removeChannel(channel); };
-  }, [reservationId, enabled, refresh]);
+  }, [reservationId, enabled, refresh, categoryId]);
 
   return { submissions, loading, error, refresh, latest: submissions[0] };
 }

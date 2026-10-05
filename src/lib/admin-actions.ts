@@ -11,6 +11,13 @@ export type AdminOnboardResult = {
   error?: string;
 };
 
+async function assignCategoryPermitNumber(reservationId: string, categoryId: string) {
+  const { data: sequence, error: sequenceError } = await supabaseAdmin.rpc('allocate_exhibition_category_sequence', { p_category_id: categoryId });
+  if (sequenceError || typeof sequence !== 'number') throw new Error(sequenceError?.message || 'Could not allocate a permit number.');
+  const { error } = await supabaseAdmin.from('booth_reservations').update({ vendor_sequence: sequence }).eq('id', reservationId);
+  if (error) throw new Error(error.message);
+}
+
 export async function adminCreateVendorAccount(data: {
   email: string;
   orgName: string;
@@ -20,6 +27,7 @@ export async function adminCreateVendorAccount(data: {
   website?: string;
   businessDescription?: string;
   tierId: string;
+  applicationData?: Record<string, string | number | boolean | null>;
 }): Promise<AdminOnboardResult> {
   try {
     const tempPassword = 'NLF-' + Math.random().toString(36).substring(2, 8).toUpperCase() + '!2026';
@@ -83,6 +91,7 @@ export async function adminCreateVendorAccount(data: {
         status: 'CONFIRMED_PAID',
         assigned_booth_number: 'Pending Assignment',
         payment_reference: 'ADMIN-MANUAL-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+        application_data: data.applicationData || {},
       })
       .select()
       .single();
@@ -96,21 +105,7 @@ export async function adminCreateVendorAccount(data: {
       .update({ stock: Math.max(0, tier.stock - 1) })
       .eq('id', data.tierId);
 
-    const { data: stats } = await supabaseAdmin
-      .from('global_stats')
-      .select('total_confirmed_orders')
-      .eq('id', 1)
-      .single();
-
-    const sequence = (stats?.total_confirmed_orders || 0) + 1;
-    await supabaseAdmin
-      .from('global_stats')
-      .upsert({ id: 1, total_confirmed_orders: sequence });
-
-    await supabaseAdmin
-      .from('booth_reservations')
-      .update({ vendor_sequence: sequence })
-      .eq('id', reservation.id);
+    await assignCategoryPermitNumber(reservation.id, tier.category_id);
 
     return {
       success: true,
@@ -150,6 +145,7 @@ async function adminCreateReservationForExistingUser(userId: string, data: any):
       status: 'CONFIRMED_PAID',
       assigned_booth_number: 'Pending Assignment',
       payment_reference: 'ADMIN-MANUAL-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+      application_data: data.applicationData || {},
     })
     .select()
     .single();
@@ -161,21 +157,7 @@ async function adminCreateReservationForExistingUser(userId: string, data: any):
     .update({ stock: Math.max(0, tier.stock - 1) })
     .eq('id', data.tierId);
 
-  const { data: stats } = await supabaseAdmin
-    .from('global_stats')
-    .select('total_confirmed_orders')
-    .eq('id', 1)
-    .single();
-
-  const sequence = (stats?.total_confirmed_orders || 0) + 1;
-  await supabaseAdmin
-    .from('global_stats')
-    .upsert({ id: 1, total_confirmed_orders: sequence });
-
-  await supabaseAdmin
-    .from('booth_reservations')
-    .update({ vendor_sequence: sequence })
-    .eq('id', reservation.id);
+  await assignCategoryPermitNumber(reservation.id, tier.category_id);
 
   return {
     success: true,

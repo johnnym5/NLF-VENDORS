@@ -19,9 +19,9 @@ import { formatNaira } from '@/lib/design-tokens';
 
 const blankAccount = { bankName: '', accountName: '', accountNumber: '' };
 
-export function ManualTransferManagement() {
+export function ManualTransferManagement({ categoryId }: { categoryId?: string }) {
   const { accounts, loading: accountsLoading, error: accountsError, refresh: refreshAccounts } = useManualTransferAccounts();
-  const { submissions, loading: submissionsLoading, error: submissionsError, refresh: refreshSubmissions } = useManualTransferSubmissions();
+  const { submissions, loading: submissionsLoading, error: submissionsError, refresh: refreshSubmissions } = useManualTransferSubmissions(undefined, true, categoryId);
   const [form, setForm] = useState(blankAccount);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);

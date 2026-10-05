@@ -11,6 +11,25 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
+  html[data-exhibitor-theme='green'] body {
+    background-color: #edf7f0;
+    background-image: linear-gradient(135deg, #f8fcf8 0%, #edf7f0 50%, #dfefe4 100%);
+  }
+
+  html[data-exhibitor-theme='peach'] body {
+    background-color: #fbf0e7;
+    background-image: linear-gradient(135deg, #fffaf4 0%, #faeee3 50%, #f4e1d2 100%);
+  }
+
+  html[data-exhibitor-theme='peach'] button[class*='bg-[#1E4D38]'] {
+    background-color: #bb704d !important;
+    border-color: #a95c3a !important;
+  }
+
+  html[data-exhibitor-theme='peach'] button[class*='bg-[#1E4D38]']:hover {
+    background-color: #a95c3a !important;
+  }
 }
 
 @layer utilities {

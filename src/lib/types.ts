@@ -11,6 +11,30 @@ export type ReservationStatus =
 
 export type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
+export type ApplicationFieldType = 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'date';
+
+export interface ApplicationField {
+  id: string;
+  categoryId: string;
+  fieldKey: string;
+  label: string;
+  fieldType: ApplicationFieldType;
+  required: boolean;
+  options: string[];
+  sortOrder: number;
+  active: boolean;
+}
+
+export interface ExhibitionCategory {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  theme: 'peach' | 'green' | 'neutral';
+  active: boolean;
+  sortOrder: number;
+}
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -27,6 +51,7 @@ export interface UserProfile {
 
 export interface BoothTier {
   id: string;
+  categoryId: string;
   name: string;
   dimension: string;
   colorCode: TierColorCode;
@@ -50,6 +75,8 @@ export interface CustomRequest {
 
 export interface BoothReservation {
   id: string;
+  categoryId: string;
+  applicationData?: Record<string, string | number | boolean | null>;
   referenceId: string;
   userId: string;
   tierId: string;

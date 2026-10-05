@@ -10,29 +10,33 @@ import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { BoothTier } from '@/lib/types';
+import { useExhibitionCategory } from '@/lib/exhibition-category';
 
 export default function BoothsPage() {
   const router = useRouter();
-  const { tiers, loading, error } = useTiers();
+  const { activeCategory, loading: categoryLoading } = useExhibitionCategory();
+  const { tiers, loading, error } = useTiers(activeCategory?.id);
 
   const handleBook = (tierId: string) => {
-    router.push(`/booths/checkout?tier=${tierId}`);
+    router.push(`/booths/checkout?tier=${tierId}&category=${activeCategory?.id || ''}`);
   };
 
   return (
     <div className="min-h-screen bg-transparent py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-12">
-          <p className="text-sm text-slate-500 uppercase tracking-wider mb-2 font-medium">
-            National Livestock Festival 2026 — Secretariat Portal
+            <p className="text-sm text-slate-500 uppercase tracking-wider mb-2 font-medium">
+            National Livestock Festival 2026 — {activeCategory?.name || 'Exhibitor'} Portal
           </p>
           <h1 className="text-3xl sm:text-4xl font-heading font-bold text-slate-900 mb-4">
-            Commercial Exhibition Booths
+            {activeCategory?.name || 'Exhibition Spaces'}
           </h1>
           <p className="text-slate-600 max-w-2xl mx-auto text-base">
-            Reserve your space at Nigeria&apos;s premier livestock exhibition. Select a booth tier to submit a space reservation and custom requests to the Secretariat.
+            {activeCategory?.description || 'Choose an exhibition space and submit your application to the Secretariat.'} Select a tier to review its dimensions, price, and availability.
           </p>
         </div>
+
+        {activeCategory && !activeCategory.active && <Alert variant="warning" className="mb-8">This category is archived and is no longer accepting new applications. Your existing permits remain available from My Permit.</Alert>}
 
         {error && (
           <Alert variant="error" className="mb-8 max-w-2xl mx-auto">
@@ -40,7 +44,7 @@ export default function BoothsPage() {
           </Alert>
         )}
 
-        {loading ? (
+        {loading || categoryLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[1, 2, 3].map((i) => (
               <div
@@ -54,7 +58,7 @@ export default function BoothsPage() {
             {tiers.map((tier: BoothTier, index: number) => {
               const colors = getTierColors(tier.colorCode);
               const isOutOfStock = tier.stock === 0;
-              const isDisabled = isOutOfStock || tier.isLocked;
+              const isDisabled = isOutOfStock || tier.isLocked || !activeCategory?.active;
 
               const borderColorMatch = colors.borderColor.match(/border-\[(#[0-9a-fA-F]+)\]/);
               const inlineBorderColor = borderColorMatch ? borderColorMatch[1] : undefined;

@@ -19,6 +19,9 @@ import {
 } from '@/lib/supabase-queries';
 import { adminCreateVendorAccount } from '@/lib/admin-actions';
 import { ManualTransferManagement } from '@/components/admin/ManualTransferManagement';
+import { ExhibitionCategoryManagement } from '@/components/admin/ExhibitionCategoryManagement';
+import { useExhibitionCategory } from '@/lib/exhibition-category';
+import { useApplicationFields } from '@/lib/exhibition-category-data';
 import { FadeIn } from '@/components/ui/FadeIn';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -50,8 +53,10 @@ import {
 import Link from 'next/link';
 
 export default function AdminDashboardPage() {
-  const { tiers, loading: tiersLoading } = useTiers();
-  const { reservations, loading: resLoading } = useReservations();
+  const { activeCategory, categories, setActiveCategory, loading: categoriesLoading } = useExhibitionCategory();
+  const { tiers, loading: tiersLoading } = useTiers(activeCategory?.id);
+  const { reservations, loading: resLoading } = useReservations(activeCategory?.id);
+  const { fields: categoryFields } = useApplicationFields(activeCategory?.id, true);
 
   const [localPrices, setLocalPrices] = useState<Record<string, number>>({});
   const [localStocks, setLocalStocks] = useState<Record<string, number>>({});
@@ -82,6 +87,7 @@ export default function AdminDashboardPage() {
     tierId: '',
   });
   const [onboardSubmitting, setOnboardSubmitting] = useState(false);
+  const [onboardApplicationAnswers, setOnboardApplicationAnswers] = useState<Record<string, string | number | boolean | null>>({});
   const [onboardResult, setOnboardResult] = useState<any>(null);
   const [onboardError, setOnboardError] = useState<string | null>(null);
 
@@ -115,11 +121,13 @@ export default function AdminDashboardPage() {
         });
         return next;
       });
-      if (tiers.length > 0 && !onboardData.tierId) {
+      if (tiers.length > 0 && !tiers.some((tier) => tier.id === onboardData.tierId)) {
         setOnboardData(prev => ({ ...prev, tierId: tiers[0].id }));
       }
     }
-  }, [tiers]);
+  }, [tiers, onboardData.tierId]);
+
+  useEffect(() => { setOnboardApplicationAnswers({}); }, [activeCategory?.id]);
 
   const handlePriceUpdate = async (tierId: string) => {
     const newPrice = localPrices[tierId];
@@ -178,7 +186,13 @@ export default function AdminDashboardPage() {
     setOnboardError(null);
     setOnboardResult(null);
 
-    const result = await adminCreateVendorAccount(onboardData);
+    const missingQuestion = categoryFields.find((field) => field.required && (onboardApplicationAnswers[field.fieldKey] === undefined || onboardApplicationAnswers[field.fieldKey] === null || onboardApplicationAnswers[field.fieldKey] === '' || (field.fieldType === 'checkbox' && onboardApplicationAnswers[field.fieldKey] !== true)));
+    if (missingQuestion) {
+      setOnboardError(`Please answer “${missingQuestion.label}”.`);
+      setOnboardSubmitting(false);
+      return;
+    }
+    const result = await adminCreateVendorAccount({ ...onboardData, sector: activeCategory?.slug === 'food-commercial-vendors' ? onboardData.sector : '', applicationData: onboardApplicationAnswers });
     if (result.success) {
       setOnboardResult(result);
     } else {
@@ -205,6 +219,7 @@ export default function AdminDashboardPage() {
       });
     } else {
       await addBoothTier({
+        categoryId: activeCategory!.id,
         name: tierFormData.name,
         dimension: tierFormData.dimension,
         colorCode: tierFormData.colorCode,
@@ -236,6 +251,8 @@ export default function AdminDashboardPage() {
     .filter((r) => r.status === 'CONFIRMED_PAID')
     .reduce((sum, r) => sum + r.totalAmount, 0);
 
+  if (categoriesLoading || tiersLoading || resLoading) return <div className="flex min-h-[60vh] items-center justify-center text-slate-500">Loading category dashboard…</div>;
+
   return (
     <div className="min-h-screen bg-transparent py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -247,11 +264,13 @@ export default function AdminDashboardPage() {
               National Livestock Festival 2026 — Secretariat
             </span>
             <h1 className="text-2xl font-heading font-bold text-slate-900">
-              Secretariat Allocation Dashboard
+              {activeCategory?.name || 'Exhibitor'} Secretariat Dashboard
             </h1>
+            <p className="mt-1 text-xs text-slate-500">Managing {activeCategory?.name || 'exhibition'} · {categories.length} categories configured</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {categories.map((category) => <Button key={category.id} size="sm" variant={category.id === activeCategory?.id ? 'primary' : 'outline'} onClick={() => setActiveCategory(category.id)}>{category.name}{category.active ? '' : ' (Archived)'}</Button>)}
             <Link href="/admin/scanner">
               <Button variant="outline" size="sm" className="flex items-center gap-1.5">
                 <QrCode className="w-4 h-4" /> Scanner Portal
@@ -259,6 +278,7 @@ export default function AdminDashboardPage() {
             </Link>
             <Button
               size="sm"
+              disabled={!activeCategory?.active}
               className="bg-[#1E4D38] hover:bg-[#153627] text-white flex items-center gap-1.5"
               onClick={() => {
                 setOnboardResult(null);
@@ -266,7 +286,7 @@ export default function AdminDashboardPage() {
                 setShowOnboardModal(true);
               }}
             >
-              <UserPlus className="w-4 h-4" /> Manual Onboard Vendor
+              <UserPlus className="w-4 h-4" /> Manual Onboard Exhibitor
             </Button>
           </div>
         </div>
@@ -295,16 +315,21 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
+        <ExhibitionCategoryManagement />
+
+        {activeCategory && !activeCategory.active && <Alert variant="warning">This category is archived. Existing applications and permits remain available for review, but new applications are disabled.</Alert>}
+
         {/* TIER MANAGEMENT SECTION */}
         <div className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-6">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-2">
               <Settings className="w-5 h-5 text-slate-600" />
-              <h2 className="text-lg font-heading font-bold text-slate-900">Exhibition Tiers & Quota Controls</h2>
+              <h2 className="text-lg font-heading font-bold text-slate-900">{activeCategory?.name || 'Exhibition'} Tiers & Quota Controls</h2>
             </div>
             <Button
               variant="outline"
               size="sm"
+              disabled={!activeCategory?.active}
               onClick={() => {
                 setEditingTier(null);
                 setTierFormData({
@@ -418,7 +443,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        <ManualTransferManagement />
+        <ManualTransferManagement categoryId={activeCategory?.id} />
 
         {/* RESERVATIONS MANAGEMENT DIRECTORY */}
         <div className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-6">
@@ -426,7 +451,7 @@ export default function AdminDashboardPage() {
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-slate-600" />
               <h2 className="text-lg font-heading font-bold text-slate-900">
-                Vendor Applications & Allocation Directory ({filteredReservations.length})
+                {activeCategory?.name || 'Exhibitor'} Applications & Allocation Directory ({filteredReservations.length})
               </h2>
             </div>
 
@@ -480,7 +505,8 @@ export default function AdminDashboardPage() {
                     </td>
                     <td className="p-3">
                       <span className="font-medium text-slate-800 block">{res.tierName}</span>
-                      <span className="text-slate-500 text-[11px]">{res.profile?.sector}</span>
+                      {res.profile?.sector && <span className="text-slate-500 text-[11px] block">{res.profile.sector}</span>}
+                      {categoryFields.filter((field) => res.applicationData?.[field.fieldKey] !== undefined && res.applicationData?.[field.fieldKey] !== null).map((field) => <span key={field.id} className="block max-w-64 truncate text-slate-500 text-[11px]" title={`${field.label}: ${String(res.applicationData?.[field.fieldKey])}`}>{field.label}: {String(res.applicationData?.[field.fieldKey])}</span>)}
                     </td>
                     <td className="p-3">
                       <span className="font-bold text-slate-900 block">{formatNaira(res.totalAmount)}</span>
@@ -672,7 +698,7 @@ export default function AdminDashboardPage() {
         {onboardResult ? (
           <div className="text-center py-6 space-y-4">
             <CheckCircle className="w-12 h-12 text-green-600 mx-auto" />
-            <h3 className="text-lg font-bold text-slate-900">Vendor Account Created & Space Allocated!</h3>
+          <h3 className="text-lg font-bold text-slate-900">Exhibitor Account Created & Space Allocated!</h3>
             <div className="bg-slate-50 p-4 rounded-lg text-left text-xs space-y-2 border border-slate-200">
               <p><strong>Email:</strong> {onboardData.email}</p>
               {onboardResult.tempPassword && (
@@ -689,7 +715,7 @@ export default function AdminDashboardPage() {
             {onboardError && <Alert variant="error">{onboardError}</Alert>}
 
             <Input
-              label="Vendor Email *"
+              label="Exhibitor Email *"
               type="email"
               value={onboardData.email}
               onChange={(e) => setOnboardData((prev) => ({ ...prev, email: e.target.value }))}
@@ -716,7 +742,7 @@ export default function AdminDashboardPage() {
               />
             </div>
 
-            <div>
+            {activeCategory?.slug === 'food-commercial-vendors' && <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">Industry Sector *</label>
               <select
                 value={onboardData.sector}
@@ -727,7 +753,16 @@ export default function AdminDashboardPage() {
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
-            </div>
+            </div>}
+
+            {categoryFields.filter((field) => field.active).map((field) => {
+              const value = onboardApplicationAnswers[field.fieldKey];
+              const setAnswer = (answer: string | number | boolean | null) => setOnboardApplicationAnswers((current) => ({ ...current, [field.fieldKey]: answer }));
+              if (field.fieldType === 'checkbox') return <label key={field.id} className="flex items-center gap-2 text-xs font-semibold text-slate-700"><input type="checkbox" checked={value === true} onChange={(event) => setAnswer(event.target.checked)} />{field.label}{field.required && ' *'}</label>;
+              if (field.fieldType === 'textarea') return <label key={field.id} className="block text-[11px] font-bold text-slate-700">{field.label}{field.required && ' *'}<textarea required={field.required} value={typeof value === 'string' ? value : ''} onChange={(event) => setAnswer(event.target.value)} rows={3} className="mt-1 w-full rounded border border-slate-300 p-2 text-xs" /></label>;
+              if (field.fieldType === 'select') return <label key={field.id} className="block text-[11px] font-bold text-slate-700">{field.label}{field.required && ' *'}<select required={field.required} value={typeof value === 'string' ? value : ''} onChange={(event) => setAnswer(event.target.value)} className="mt-1 w-full rounded border border-slate-300 bg-white p-2 text-xs"><option value="">Choose an option</option>{field.options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+              return <label key={field.id} className="block text-[11px] font-bold text-slate-700">{field.label}{field.required && ' *'}<input required={field.required} type={field.fieldType === 'number' ? 'number' : field.fieldType === 'date' ? 'date' : 'text'} value={value === null || value === undefined ? '' : String(value)} onChange={(event) => setAnswer(field.fieldType === 'number' ? (event.target.value ? Number(event.target.value) : null) : event.target.value)} className="mt-1 w-full rounded border border-slate-300 p-2 text-xs" /></label>;
+            })}
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">Exhibition Space Tier *</label>
@@ -743,7 +778,7 @@ export default function AdminDashboardPage() {
             </div>
 
             <Button type="submit" disabled={onboardSubmitting} className="w-full bg-[#1E4D38] text-white">
-              {onboardSubmitting ? 'Onboarding Vendor...' : 'Onboard & Mark Confirmed Paid'}
+              {onboardSubmitting ? 'Onboarding Exhibitor...' : 'Onboard & Mark Confirmed Paid'}
             </Button>
           </form>
         )}
